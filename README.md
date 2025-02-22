@@ -12,7 +12,7 @@ tradegpt/              # Frontend (Fresh/Deno)
 ├── static/           # Static assets
 └── ...
 
-tradegpt-backend/     # Backend (Python)
+tradegpt-backend/     # Backend (Python/FASTAPI)
 ├── coinbase-tradegpt-server.py  # Main server
 └── .env              # Environment configuration
 ```

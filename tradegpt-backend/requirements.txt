@@ -1,0 +1,8 @@
+python-dotenv
+coinbase-advanced-py
+pandas
+numpy
+azure-ai-inference
+fastapi
+uvicorn
+pydantic

@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #1e3a8a;
+  --color-secondary: #f0f9ff;
+  --color-text: #1e293b;
+  --color-accent: #3b82f6;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-neutral: #6b7280;
+  --color-background: #f8fafc;
+}
+
+.result-card {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: none; /* Hidden by default */
+}
+
+.result-card[style*="display: block"] {
+  display: block !important; /* Force display when style is set */
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--color-secondary);
+}
+
+.result-pair {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.result-signal {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.result-signal.buy {
+  background-color: var(--color-success);
+  color: white;
+}
+
+.result-signal.sell {
+  background-color: var(--color-danger);
+  color: white;
+}
+
+.indicator-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--color-secondary);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.result-item-label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.result-item-value {
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+.font-roboto {
+  font-family: 'Roboto', sans-serif;
+}
+
+.font-montserrat {
+  font-family: 'Montserrat', sans-serif;
+}
+
+/* Chart styles */
+.tv-lightweight-charts {
+  font-family: 'Roboto', sans-serif !important;
+}
+
+/* Analysis display */
+.analysis-card {
+  @apply bg-white rounded-lg shadow-lg p-6 transition-all duration-200;
+}
+
+.analysis-card:hover {
+  @apply shadow-xl;
+}
+
+.indicator-value {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.indicator-label {
+  @apply text-sm text-gray-600;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  @apply animate-spin rounded-full border-4 border-gray-200;
+  border-top-color: var(--color-primary);
+}
+
+/* Transitions */
+.fade-enter {
+  opacity: 0;
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transition: opacity 200ms ease-in;
+}
+
+.fade-exit {
+  opacity: 1;
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
