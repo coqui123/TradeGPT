@@ -89,3 +89,7 @@ The project uses:
 3. Commit your changes 💾
 4. Push to the branch 🚀
 5. Create a new Pull Request ✅
+
+## Images 📸
+![image](https://github.com/user-attachments/assets/348fdca7-29f2-46d7-b86d-4f49342f0ccd)
+
