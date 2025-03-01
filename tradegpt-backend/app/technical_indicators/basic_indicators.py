@@ -97,3 +97,79 @@ def directional_movement_index(high, low, close, window=14):
     adx = dx.rolling(window).mean()
 
     return plus_di, minus_di, adx 
+
+def williams_percent_r(high, low, close, period=14):
+    """Calculate Williams %R"""
+    highest_high = high.rolling(window=period).max()
+    lowest_low = low.rolling(window=period).min()
+    wr = -100 * ((highest_high - close) / (highest_high - lowest_low))
+    return wr
+
+def volume_zone_oscillator(close, volume, period=14, signal_period=9):
+    """Calculate Volume Zone Oscillator"""
+    price_change = close.diff()
+    pos_volume = np.where(price_change > 0, volume, 0)
+    neg_volume = np.where(price_change < 0, volume, 0)
+    zero_volume = np.where(price_change == 0, volume, 0)
+    
+    pos_volume_sma = pd.Series(pos_volume).rolling(window=period).sum()
+    neg_volume_sma = pd.Series(neg_volume).rolling(window=period).sum()
+    zero_volume_sma = pd.Series(zero_volume).rolling(window=period).sum()
+    
+    total_volume_sma = pos_volume_sma + neg_volume_sma + zero_volume_sma
+    
+    vzo = 100 * (pos_volume_sma - neg_volume_sma) / total_volume_sma
+    signal = vzo.rolling(window=signal_period).mean()
+    
+    return vzo, signal
+
+def relative_volume(volume, window=20):
+    """Calculate Relative Volume (comparing current volume to average)"""
+    avg_volume = volume.rolling(window=window).mean()
+    rel_volume = volume / avg_volume
+    return rel_volume
+
+def chandelier_exit(high, low, close, period=22, atr_multiplier=3.0):
+    """Calculate Chandelier Exit"""
+    atr = average_true_range(high, low, close, window=period)
+    
+    # Long exit (for uptrend)
+    highest_high = high.rolling(window=period).max()
+    long_exit = highest_high - (atr * atr_multiplier)
+    
+    # Short exit (for downtrend)
+    lowest_low = low.rolling(window=period).min()
+    short_exit = lowest_low + (atr * atr_multiplier)
+    
+    return long_exit, short_exit
+
+def market_regime(close, sma_fast=50, sma_slow=200, std_period=20, std_threshold=1.5):
+    """Identify market regime (trending vs ranging)"""
+    # Calculate SMAs
+    sma_f = close.rolling(window=sma_fast).mean()
+    sma_s = close.rolling(window=sma_slow).mean()
+    
+    # Calculate standard deviation
+    std = close.rolling(window=std_period).std()
+    std_avg = std.rolling(window=std_period).mean()
+    
+    # Determine volatility regime
+    volatility_regime = std > (std_avg * std_threshold)
+    
+    # Determine trend regime (1: uptrend, -1: downtrend, 0: ranging)
+    trend_regime = np.zeros(len(close))
+    trend_regime[sma_f > sma_s] = 1  # Uptrend
+    trend_regime[sma_f < sma_s] = -1  # Downtrend
+    
+    # Combine to get market regime
+    # 1: volatile uptrend, -1: volatile downtrend
+    # 0.5: low-volatility uptrend, -0.5: low-volatility downtrend
+    # 0: ranging/uncertain
+    market_regime = pd.Series(trend_regime, index=close.index)
+    market_regime[volatility_regime & (trend_regime == 1)] = 1
+    market_regime[volatility_regime & (trend_regime == -1)] = -1
+    market_regime[~volatility_regime & (trend_regime == 1)] = 0.5
+    market_regime[~volatility_regime & (trend_regime == -1)] = -0.5
+    
+    return market_regime, volatility_regime
+

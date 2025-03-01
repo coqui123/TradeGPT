@@ -13,7 +13,8 @@ import statistics
 from app.technical_indicators.basic_indicators import (
     macd, bollinger_bands, relative_strength_index, average_true_range,
     pivot_points, elder_ray_index, stochastic_oscillator, on_balance_volume,
-    keltner_channel, directional_movement_index
+    keltner_channel, directional_movement_index, williams_percent_r, 
+    volume_zone_oscillator, relative_volume, chandelier_exit, market_regime
 )
 from app.technical_indicators.advanced_indicators import (
     accumulation_distribution_line, chaikin_oscillator, aroon_indicator,
@@ -231,9 +232,8 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             }
         }
         
-        # Williams %R - similar to Stochastic but scaled differently
-        # Using Stochastic as a base and converting
-        williams_r = (k - 100) * -1
+        # Williams %R - Using our implemented function
+        williams_r = williams_percent_r(df['high'], df['low'], df['close'])
         williams_results = {
             "Williams_%R": {
                 "value": safe_get_value(williams_r),
@@ -385,6 +385,26 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             }
         }
         
+        # Volume Zone Oscillator
+        vzo, vzo_signal = volume_zone_oscillator(df['close'], df['volume'])
+        vzo_results = {
+            "VZO": {
+                "value": safe_get_value(vzo),
+                "signal": safe_get_value(vzo_signal),
+                "data": vzo.values.tolist(),
+                "signal_data": vzo_signal.values.tolist()
+            }
+        }
+        
+        # Relative Volume
+        rel_vol = relative_volume(df['volume'])
+        rel_vol_results = {
+            "Relative_Volume": {
+                "value": safe_get_value(rel_vol),
+                "data": rel_vol.values.tolist()
+            }
+        }
+        
         # Combine all results
         return {
             **obv_results, 
@@ -392,7 +412,9 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             **cmf_results, 
             **co_results,
             **mfi_results,
-            **vol_macd_results
+            **vol_macd_results,
+            **vzo_results,
+            **rel_vol_results
         }
     
     # Calculate Volatility Indicators
@@ -425,6 +447,17 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             }
         }
         
+        # Chandelier Exit
+        long_exit, short_exit = chandelier_exit(df['high'], df['low'], df['close'])
+        chandelier_results = {
+            "Chandelier_Exit": {
+                "long_exit": safe_get_value(long_exit),
+                "short_exit": safe_get_value(short_exit),
+                "long_exit_data": long_exit.values.tolist(),
+                "short_exit_data": short_exit.values.tolist()
+            }
+        }
+        
         # Parabolic SAR
         sar, trend = parabolic_sar(df['high'], df['low'])
         sar_results = {
@@ -451,6 +484,7 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             **atr_results, 
             **atr_percent_results, 
             **hist_vol_results, 
+            **chandelier_results,
             **sar_results,
             **bb_width_results
         }
@@ -498,6 +532,9 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
         golden_cross = sma50 > sma200 and df['close'].rolling(window=50).mean().iloc[-2] <= df['close'].rolling(window=200).mean().iloc[-2]
         death_cross = sma50 < sma200 and df['close'].rolling(window=50).mean().iloc[-2] >= df['close'].rolling(window=200).mean().iloc[-2]
         
+        # Market Regime
+        regime, volatility_flag = market_regime(df['close'])
+        
         # Price relative to MAs
         above_50ma = current_price > sma50
         above_200ma = current_price > sma200
@@ -543,7 +580,9 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 "rsi_overbought": bool(rsi_overbought),
                 "adx": adx_value,
                 "strong_trend": bool(strong_trend),
-                "trend_direction": "bullish" if plus_di_value > minus_di_value else "bearish"
+                "trend_direction": "bullish" if plus_di_value > minus_di_value else "bearish",
+                "regime": regime,
+                "volatility_flag": volatility_flag
             }
         }
         

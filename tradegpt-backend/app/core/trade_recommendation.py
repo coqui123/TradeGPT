@@ -308,7 +308,7 @@ def generate_trade_recommendation(combined_data: str, user_balance: Dict[str, An
             "trailing": [ATR-based trailing parameters]
         }},
         "confidence": "LOW" or "MEDIUM" or "HIGH",
-        "explanation": "Direct and concise justification < 95 words)",
+        "explanation": "Concise justification < 150 words)",
         "timeframe": [from data],
         "key_levels": {{
             "support_levels": [
