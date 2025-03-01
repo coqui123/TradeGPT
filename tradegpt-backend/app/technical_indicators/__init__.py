@@ -1,0 +1,3 @@
+"""
+Technical indicators module
+""" 

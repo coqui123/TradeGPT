@@ -879,6 +879,20 @@ function formatIndicatorValue(value: any) {
   if (Array.isArray(value)) {
     return value.map(v => v.toString()).join(", ");
   }
+  
+  // If it's an object (like a dictionary), format it as a proper JSON display
+  if (typeof value === "object" && value !== null) {
+    try {
+      return (
+        <pre className="text-sm overflow-auto max-h-60 bg-gray-100 p-2 rounded">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      );
+    } catch (e) {
+      return value.toString();
+    }
+  }
+  
   return value.toString();
 }
 
@@ -1597,13 +1611,57 @@ export default function Chart({ initialPair = "BTC-USD" }: ChartProps) {
               {/* Technical Indicators */}
               <div>
                 <h3 class="text-xl font-semibold mb-4">Technical Indicators</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {Object.entries(analysisResult.value.analysis_details.technical_indicators).map(([key, value]) => (
-                    <div class="bg-secondary p-4 rounded-lg">
-                      <div class="text-sm text-neutral mb-1">{formatIndicatorName(key)}</div>
-                      <div class="text-lg font-semibold">{formatIndicatorValue(value)}</div>
-                    </div>
-                  ))}
+                <div class="bg-secondary p-6 rounded-lg">
+                  <div class="text-sm text-neutral mb-2 flex items-center justify-between">
+                    <span>Full Technical Indicators Data</span>
+                    <button 
+                      class="p-1 rounded hover:bg-gray-700 transition-colors text-gray-300 hover:text-white flex items-center space-x-1"
+                      onClick={() => {
+                        if (analysisResult.value && analysisResult.value.analysis_details && analysisResult.value.analysis_details.technical_indicators) {
+                          const btn = document.activeElement as HTMLElement;
+                          const spanElement = btn.querySelector('span');
+                          const originalText = spanElement ? spanElement.textContent || 'Copy' : 'Copy';
+                          
+                          if (spanElement) {
+                            spanElement.textContent = 'Copying...';
+                          }
+                          
+                          navigator.clipboard.writeText(JSON.stringify(analysisResult.value.analysis_details.technical_indicators, null, 2))
+                            .then(() => {
+                              if (spanElement) {
+                                spanElement.textContent = 'Copied!';
+                                setTimeout(() => {
+                                  spanElement.textContent = originalText;
+                                }, 2000);
+                              }
+                            })
+                            .catch((error) => {
+                              console.error('Failed to copy data: ', error);
+                              if (spanElement) {
+                                spanElement.textContent = 'Failed!';
+                                setTimeout(() => {
+                                  spanElement.textContent = originalText;
+                                }, 2000);
+                              }
+                            });
+                        }
+                      }}
+                      title="Copy to clipboard"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002-2h4a2 2 0 012 2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                      </svg>
+                      <span class="text-xs">Copy</span>
+                    </button>
+                  </div>
+                  <pre class="text-xs sm:text-sm overflow-auto max-h-[500px] bg-gray-800 text-gray-100 p-4 rounded whitespace-pre-wrap font-mono border border-gray-700 shadow-inner">
+                    {"Available Indicator Keys: " + 
+                      (analysisResult.value.analysis_details.technical_indicators ? 
+                        Object.keys(analysisResult.value.analysis_details.technical_indicators).join(", ") : 
+                        "None")}
+                    {"\n\n"}
+                    {JSON.stringify(analysisResult.value.analysis_details.technical_indicators, null, 2)}
+                  </pre>
                 </div>
               </div>
             </div>

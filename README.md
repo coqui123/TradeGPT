@@ -11,10 +11,29 @@ tradegpt/              # Frontend (Fresh/Deno)
 ├── components/        # Shared components
 ├── static/           # Static assets
 └── ...
+```
 
-tradegpt-backend/     # Backend (Python/FASTAPI)
-├── coinbase-tradegpt-server.py  # Main server
-└── .env              # Environment configuration
+```
+tradegpt-backend/
+├── app/
+│   ├── api/
+│   │   └── routes.py         # API endpoints
+│   ├── core/
+│   │   ├── trade_recommendation.py
+        ├── analysis_engine.py  
+│   │   └── data_fetcher.py   # Market data fetching
+│   ├── models/
+│   │   └── schemas.py        # Pydantic data models
+│   ├── services/
+│   │   ├── coinbase_manager.py  # Coinbase API integration
+│   │   └── llm_manager.py    # Language model integration
+│   ├── technical_indicators/
+│   │   ├── advanced_indicators.py     # Technical indicators
+│   │   └── basic_indicators.py     
+│   └── utils/
+│       └── json_utils.py     # JSON formatting utilities
+├── main.py                   # Application entry point
+└── requirements.txt          # Dependencies
 ```
 
 ## Prerequisites ✅
@@ -64,7 +83,7 @@ LLM_API_MODEL_NAME=your_llm_model_name
 
 4. Run the backend server:
 ```bash
-python coinbase-tradegpt-server.py
+python main.py
 ```
 
 ## Features ✨
