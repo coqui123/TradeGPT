@@ -21,12 +21,17 @@ from app.technical_indicators.advanced_indicators import (
     chaikin_money_flow, parabolic_sar, money_flow_index, percentage_price_oscillator,
     donchian_channels, rate_of_change, commodity_channel_index, awesome_oscillator,
     vortex_indicator, true_strength_index, mass_index, hull_moving_average,
-    coppock_curve, klinger_oscillator, ichimoku_cloud, supertrend, heikin_ashi,
+    coppock_curve, vwap, klinger_oscillator, ichimoku_cloud, supertrend, heikin_ashi,
     camarilla_pivot_points, woodie_pivot_points, demark_pivot_points, squeeze_momentum,
     ehlers_fisher_transform, chande_momentum_oscillator, elder_triple_screen,
     volume_profile, harmonic_patterns, divergence_scanner,
     stochastic_rsi, elliott_wave_tracker, mean_reversion_index,
     market_breadth_indicators, orderflow_analysis
+)
+from app.technical_indicators.smart_money_indicators import (
+    liquidity_sweep_analysis, order_block_detection, smart_money_analysis,
+    cumulative_delta_analysis, volatility_regime_detection, market_depth_analysis,
+    funding_liquidation_analysis, cross_asset_correlation
 )
 
 # Configure logging
@@ -75,34 +80,43 @@ def calculate_technical_indicators(pair_data: Dict[str, Any]) -> Dict[str, Any]:
     return calculate_technical_indicators_parallel(candles)
 
 def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Use parallel processing to calculate all technical indicators
-    """
-    # Function to safely get value from series
+    """Calculate technical indicators in parallel for improved performance"""
+    logger.info(f"Processing technical analysis with {len(df)} candles")
+    
+    results = {}
+    
+    # Create safe accessor functions to handle potential exceptions
     def safe_get_value(series, default=np.nan):
-        if series is None or isinstance(series, (int, float)):
-            return default
-        if isinstance(series, pd.Series) and series.empty:
-            return default
-        if isinstance(series, list) and not series:
-            return default
-        if isinstance(series, np.ndarray) and len(series) == 0:
-            return default
         try:
-            if isinstance(series, pd.Series):
-                return series.iloc[-1]
-            elif isinstance(series, (list, np.ndarray)) and len(series) > 0:
-                return series[-1]
-            return default
-        except Exception:
+            return float(series.iloc[-1])
+        except (IndexError, ValueError, TypeError, AttributeError):
             return default
     
-    # Create dictionaries to store all indicator results
-    all_indicators = {}
-    result = {}  # Initialize the result dictionary
+    # For empty dataframe, return empty results
+    if df.empty:
+        return {
+            "error": "Empty dataframe provided"
+        }
     
-    # Calculate Moving Averages
+    # Extract OHLCV data
+    try:
+        open_prices = df['open']
+        high_prices = df['high']
+        low_prices = df['low']
+        close_prices = df['close']
+        volumes = df['volume']
+    except KeyError as e:
+        return {
+            "error": f"Missing required column in dataframe: {str(e)}"
+        }
+    
+    # Define calculation functions for parallel execution
     def calculate_moving_averages():
+        """
+        Calculate moving averages and update the results dictionary directly.
+        This function doesn't return a dictionary; it returns True on success and False on failure.
+        The actual results are stored in the results['moving_averages'] dictionary.
+        """
         try:
             ma_periods = [5, 10, 20, 50, 100, 200]
             ema_periods = [5, 10, 20, 50, 100, 200]
@@ -173,7 +187,7 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                     }
             
             # Add results to the main dictionary
-            all_indicators["moving_averages"] = {
+            results["moving_averages"] = {
                 "simple": sma_results,
                 "exponential": ema_results
             }
@@ -181,14 +195,13 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             return True
         except Exception as e:
             logger.error(f"Error calculating moving_averages: {str(e)}")
-            all_indicators["moving_averages"] = {
+            results["moving_averages"] = {
                 "error": str(e),
                 "simple": {},
                 "exponential": {}
             }
             return False
     
-    # Calculate Momentum Indicators
     def calculate_momentum():
         # RSI
         rsi = relative_strength_index(df['close'])
@@ -324,7 +337,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             **cc_results
         }
     
-    # Calculate Volume Indicators
     def calculate_volume_analysis():
         # On-Balance Volume
         obv = on_balance_volume(df['close'], df['volume'])
@@ -411,6 +423,15 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             }
         }
         
+        # Volume Weighted Average Price (VWAP)
+        vwap_val = vwap(df['high'], df['low'], df['close'], df['volume'])
+        vwap_results = {
+            "VWAP": {
+                "value": safe_get_value(vwap_val),
+                "data": vwap_val.values.tolist()
+            }
+        }
+        
         # Combine all results
         return {
             **obv_results, 
@@ -420,10 +441,10 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             **mfi_results,
             **vol_macd_results,
             **vzo_results,
-            **rel_vol_results
+            **rel_vol_results,
+            **vwap_results
         }
     
-    # Calculate Volatility Indicators
     def calculate_volatility():
         # Average True Range
         atr = average_true_range(df['high'], df['low'], df['close'])
@@ -495,7 +516,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             **bb_width_results
         }
     
-    # Calculate Fibonacci Retracement Levels
     def calculate_fibonacci_levels():
         # Get recent high and low
         if len(df) < 20:
@@ -525,7 +545,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
         
         return fib_levels
     
-    # Calculate Technical Analysis Summary & Signals
     def calculate_market_structure():
         # Current price
         current_price = df['close'].iloc[-1]
@@ -555,6 +574,17 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
         # Price relative to MAs
         above_50ma = current_price > sma50
         above_200ma = current_price > sma200
+        
+        # Create synthetic market breadth data for single instrument analysis
+        # These are basic approximations for demonstration purposes
+        # In a real market index, you would use actual breadth data from multiple stocks
+        price_diff = df['close'].diff()
+        advances = pd.Series(np.where(price_diff > 0, 1, 0), index=df.index).rolling(window=5).sum()
+        declines = pd.Series(np.where(price_diff < 0, 1, 0), index=df.index).rolling(window=5).sum()
+        unchanged = pd.Series(np.where(price_diff == 0, 1, 0), index=df.index).rolling(window=5).sum()
+        
+        # Calculate market breadth indicators
+        mb_indicators = market_breadth_indicators(advances, declines, unchanged)
         
         # Pivot Points (traditional)
         pivot, r1, s1, r2, s2, r3, s3 = pivot_points(df['high'].iloc[-2], df['low'].iloc[-2], df['close'].iloc[-2])
@@ -615,6 +645,14 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 "market_regime": float(regime_value),
                 "high_volatility": bool(volatility_flag),
                 
+                # Market Breadth
+                "market_breadth": {
+                    "advance_decline_line": float(safe_get_value(mb_indicators["advance_decline_line"], 0)),
+                    "mcclellan_oscillator": float(safe_get_value(mb_indicators["mcclellan_oscillator"], 0)),
+                    "bullish_percent_index": float(safe_get_value(mb_indicators["bullish_percent_index"], 50)),
+                    "high_low_index": float(safe_get_value(mb_indicators["high_low_index"], 50))
+                },
+                
                 # Standard Pivot Points
                 "pivot": float(pivot),
                 "r1": float(r1),
@@ -656,7 +694,7 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                     "val": float(vp["val"]) if vp["val"] is not None else None,
                     "hvn_count": len(vp["hvn"]),
                     "lvn_count": len(vp["lvn"]),
-                    "hvn_prices": [float(price) for price in vp["hvn"][:3]] if vp["hvn"] else []  # Include top 3 HVNs
+                    "hvn_prices": [float(price) for price in vp["hvn"][:3]] if vp["hvn"] else [],  # Include top 3 HVNs
                 },
                 
                 # Harmonic Patterns
@@ -692,7 +730,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             }
         }
     
-    # Calculate multi-timeframe analysis if weekly data is available
     def calculate_multi_timeframe_analysis():
         try:
             # Check if we have enough data for daily timeframe
@@ -746,7 +783,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 }
             }
     
-    # Calculate Additional Technical Indicators that weren't included above
     def calculate_additional_indicators():
         try:
             # Keltner Channel
@@ -763,6 +799,23 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 "KC_Lower": {
                     "value": safe_get_value(lower_kc),
                     "data": lower_kc.values.tolist()
+                }
+            }
+            
+            # Directional Movement Index
+            plus_di, minus_di, adx = directional_movement_index(df['high'], df['low'], df['close'])
+            dmi_results = {
+                "Plus_DI": {
+                    "value": safe_get_value(plus_di),
+                    "data": plus_di.values.tolist()
+                },
+                "Minus_DI": {
+                    "value": safe_get_value(minus_di),
+                    "data": minus_di.values.tolist()
+                },
+                "ADX": {
+                    "value": safe_get_value(adx),
+                    "data": adx.values.tolist()
                 }
             }
             
@@ -850,21 +903,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 "HMA": {
                     "value": safe_get_value(hma),
                     "data": hma.values.tolist()
-                }
-            }
-            
-            # VWAP (Volume-Weighted Average Price)
-            # Using our own implementation since vwap is not defined
-            def calculate_vwap(high, low, close, volume):
-                typical_price = (high + low + close) / 3
-                vwap = (typical_price * volume).cumsum() / volume.cumsum()
-                return vwap
-                
-            vwap_values = calculate_vwap(df['high'], df['low'], df['close'], df['volume'])
-            vwap_results = {
-                "VWAP": {
-                    "value": safe_get_value(vwap_values),
-                    "data": vwap_values.values.tolist()
                 }
             }
             
@@ -1013,6 +1051,7 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             # Combine all results
             return {
                 **keltner_results,
+                **dmi_results,
                 **elder_ray_results,
                 **klinger_results,
                 **aroon_results,
@@ -1020,7 +1059,6 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 **vortex_results,
                 **mass_idx_results,
                 **hma_results,
-                **vwap_results,
                 **ichimoku_results,
                 **supertrend_results,
                 **heikin_ashi_results,
@@ -1036,7 +1074,148 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 "error": f"Error calculating additional indicators: {str(e)}"
             }
 
-    # Add this new function after calculate_additional_indicators()
+    def calculate_smart_money_indicators():
+        smart_money_results = {}
+
+        try:
+            # Liquidity Sweep Analysis
+            sweep_analysis = liquidity_sweep_analysis(
+                high_prices, low_prices, close_prices, volumes
+            )
+            smart_money_results["liquidity_sweeps"] = {
+                "high_sweeps_count": len(sweep_analysis['high_sweeps']),
+                "low_sweeps_count": len(sweep_analysis['low_sweeps']),
+                "current_high_sweep": sweep_analysis['current_high_sweep'],
+                "current_low_sweep": sweep_analysis['current_low_sweep'],
+                "recent_sweeps": sweep_analysis['high_sweeps'][-3:] + sweep_analysis['low_sweeps'][-3:] 
+                                if sweep_analysis['high_sweeps'] or sweep_analysis['low_sweeps'] else []
+            }
+            
+            # Order Block Detection
+            order_blocks = order_block_detection(
+                open_prices, high_prices, low_prices, close_prices, volumes
+            )
+            smart_money_results["order_blocks"] = {
+                "bullish_blocks_count": len(order_blocks['bullish_order_blocks']),
+                "bearish_blocks_count": len(order_blocks['bearish_order_blocks']),
+                "active_bullish_count": len(order_blocks['active_bullish_blocks']),
+                "active_bearish_count": len(order_blocks['active_bearish_blocks']),
+                "recent_bullish": order_blocks['active_bullish_blocks'][-3:] if order_blocks['active_bullish_blocks'] else [],
+                "recent_bearish": order_blocks['active_bearish_blocks'][-3:] if order_blocks['active_bearish_blocks'] else []
+            }
+            
+            # Smart Money Concepts
+            smc = smart_money_analysis(
+                open_prices, high_prices, low_prices, close_prices, volumes
+            )
+            smart_money_results["fair_value_gaps"] = {
+                "bullish_fvg_count": len(smc['bullish_fvg']),
+                "bearish_fvg_count": len(smc['bearish_fvg']),
+                "equal_highs_count": len(smc['equal_highs']),
+                "equal_lows_count": len(smc['equal_lows']),
+                "recent_bullish_fvg": smc['bullish_fvg'][-3:] if smc['bullish_fvg'] else [],
+                "recent_bearish_fvg": smc['bearish_fvg'][-3:] if smc['bearish_fvg'] else []
+            }
+            
+            # Volatility Regime Detection
+            vol_regime = volatility_regime_detection(
+                close_prices, high_prices, low_prices
+            )
+            smart_money_results["volatility_regime"] = vol_regime
+            
+            # Cumulative Delta Analysis (estimated from price action)
+            delta = cumulative_delta_analysis(
+                open_prices, high_prices, low_prices, close_prices, volumes
+            )
+            smart_money_results["cumulative_delta"] = {
+                "recent_delta": delta['delta'][-10:] if len(delta['delta']) > 10 else delta['delta'],
+                "recent_cumulative_delta": delta['cumulative_delta'][-10:] if len(delta['cumulative_delta']) > 10 else delta['cumulative_delta'],
+                "divergence_count": len(delta['delta_divergences']),
+                "recent_divergences": delta['delta_divergences'][-3:] if delta['delta_divergences'] else []
+            }
+            
+            # Market Depth Analysis - if order book data is available 
+            try:
+                # Use estimated bid/ask levels based on recent price action
+                current_price = close_prices.iloc[-1]
+                range_high = high_prices.iloc[-20:].max()
+                range_low = low_prices.iloc[-20:].min()
+                
+                # Create synthetic levels for demonstration
+                bid_levels = [current_price * (1 - 0.001 * i) for i in range(1, 6)]
+                ask_levels = [current_price * (1 + 0.001 * i) for i in range(1, 6)]
+                level_volumes = [volumes.iloc[-1] * (0.9 ** i) for i in range(10)]
+                
+                market_depth = market_depth_analysis(
+                    float(current_price), bid_levels, ask_levels, level_volumes
+                )
+                smart_money_results["market_depth"] = {
+                    "bid_ask_imbalance": market_depth['bid_ask_imbalance'],
+                    "buy_pressure": market_depth['buy_pressure'],
+                    "sell_pressure": market_depth['sell_pressure'],
+                    "support_zones": [level['price'] for level in market_depth['support_clusters'][:3]] if market_depth['support_clusters'] else [],
+                    "resistance_zones": [level['price'] for level in market_depth['resistance_clusters'][:3]] if market_depth['resistance_clusters'] else []
+                }
+            except Exception as e:
+                logger.error(f"Error calculating market depth analysis: {str(e)}")
+            
+            # Funding and Liquidation Analysis (for crypto)
+            try:
+                # Create synthetic funding and liquidation data for demonstration
+                current_price = close_prices.iloc[-1]
+                
+                # Simple oscillator based on price momentum
+                mom = close_prices.pct_change(5)
+                funding_rates = mom.rolling(8).mean() * 0.01  # Scale to typical funding rate ranges
+                
+                # Create synthetic liquidation data
+                long_liqs = pd.Series((close_prices.diff() < 0) * volumes * 0.1, index=close_prices.index)
+                short_liqs = pd.Series((close_prices.diff() > 0) * volumes * 0.1, index=close_prices.index)
+                
+                # Synthetic open interest
+                open_interest = volumes.rolling(14).sum()
+                
+                funding_analysis = funding_liquidation_analysis(
+                    float(current_price), funding_rates, long_liqs, short_liqs, open_interest
+                )
+                smart_money_results["funding_liquidation"] = {
+                    "funding_trend": funding_analysis['funding_trend'],
+                    "current_funding": funding_analysis['current_funding'],
+                    "market_sentiment": funding_analysis['market_sentiment'],
+                    "open_interest_change": funding_analysis['open_interest_change'],
+                    "long_liquidation_clusters": len(funding_analysis['long_liquidation_clusters']),
+                    "short_liquidation_clusters": len(funding_analysis['short_liquidation_clusters'])
+                }
+            except Exception as e:
+                logger.error(f"Error calculating funding and liquidation analysis: {str(e)}")
+            
+            # Cross Asset Correlation
+            try:
+                # Create synthetic related assets by adding noise to the main asset
+                main_asset_price = close_prices
+                related_assets = {
+                    'related1': main_asset_price * (1 + np.random.normal(0, 0.01, len(main_asset_price))),
+                    'related2': main_asset_price * (1 - np.random.normal(0, 0.01, len(main_asset_price))),
+                    'related3': main_asset_price * (1 + np.sin(np.arange(len(main_asset_price)) * 0.1) * 0.05)
+                }
+                
+                correlation_analysis = cross_asset_correlation(
+                    main_asset_price, related_assets, [14, 30]
+                )
+                smart_money_results["cross_asset_correlation"] = {
+                    "strongest_positive": correlation_analysis['strongest_positive'],
+                    "strongest_negative": correlation_analysis['strongest_negative'],
+                    "correlations_14d": {k: v['correlation'] for k, v in correlation_analysis['correlations'].get('14d', {}).items()}
+                }
+            except Exception as e:
+                logger.error(f"Error calculating cross asset correlation: {str(e)}")
+            
+        except Exception as e:
+            logger.error(f"Error calculating smart money indicators: {str(e)}")
+            smart_money_results["error"] = str(e)
+            
+        return smart_money_results
+    
     def calculate_advanced_patterns():
         try:
             advanced_patterns_result = {}  # Initialize a local result dictionary
@@ -1150,116 +1329,50 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             logger.error(f"Error calculating advanced patterns: {str(e)}")
             return {"error": str(e)}
 
-    # Execute all indicator calculations with error handling
-    try:
-        # Track execution and errors for each calculation
-        execution_results = {
-            "moving_averages": {"executed": False, "error": None},
-            "momentum": {"executed": False, "error": None},
-            "volume_analysis": {"executed": False, "error": None},
-            "volatility": {"executed": False, "error": None},
-            "fibonacci_levels": {"executed": False, "error": None},
-            "market_structure": {"executed": False, "error": None},
-            "multi_timeframe_analysis": {"executed": False, "error": None},
-            "additional_indicators": {"executed": False, "error": None},
-            "advanced_patterns": {"executed": False, "error": None}
+    # Execute calculations in parallel
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        calculations = {
+            "moving_averages": executor.submit(calculate_moving_averages),
+            "momentum": executor.submit(calculate_momentum),
+            "volume": executor.submit(calculate_volume_analysis),
+            "volatility": executor.submit(calculate_volatility),
+            "fibonacci": executor.submit(calculate_fibonacci_levels),
+            "market_structure": executor.submit(calculate_market_structure),
+            "multi_timeframe": executor.submit(calculate_multi_timeframe_analysis),
+            "additional": executor.submit(calculate_additional_indicators),
+            "advanced_patterns": executor.submit(calculate_advanced_patterns),
+            "smart_money": executor.submit(calculate_smart_money_indicators)
         }
         
-        # Execute each function with individual try-except blocks
-        try:
-            calculate_moving_averages()
-            execution_results["moving_averages"]["executed"] = True
-        except Exception as e:
-            execution_results["moving_averages"]["error"] = str(e)
-            logger.error(f"Error calculating moving averages: {str(e)}")
-            
-        try:
-            momentum_results = calculate_momentum()
-            if momentum_results and isinstance(momentum_results, dict):
-                result.update(momentum_results)
-            execution_results["momentum"]["executed"] = True
-        except Exception as e:
-            execution_results["momentum"]["error"] = str(e)
-            logger.error(f"Error calculating momentum indicators: {str(e)}")
-            
-        try:
-            volume_results = calculate_volume_analysis()
-            if volume_results and isinstance(volume_results, dict):
-                result.update(volume_results)
-            execution_results["volume_analysis"]["executed"] = True
-        except Exception as e:
-            execution_results["volume_analysis"]["error"] = str(e)
-            logger.error(f"Error calculating volume analysis: {str(e)}")
-            
-        try:
-            volatility_results = calculate_volatility()
-            if volatility_results and isinstance(volatility_results, dict):
-                result.update(volatility_results)
-            execution_results["volatility"]["executed"] = True
-        except Exception as e:
-            execution_results["volatility"]["error"] = str(e)
-            logger.error(f"Error calculating volatility indicators: {str(e)}")
-            
-        try:
-            fib_results = calculate_fibonacci_levels()
-            if fib_results and isinstance(fib_results, dict):
-                result.update(fib_results)
-            execution_results["fibonacci_levels"]["executed"] = True
-        except Exception as e:
-            execution_results["fibonacci_levels"]["error"] = str(e)
-            logger.error(f"Error calculating fibonacci levels: {str(e)}")
-            
-        try:
-            market_structure_results = calculate_market_structure()
-            if market_structure_results and isinstance(market_structure_results, dict):
-                result.update(market_structure_results)
-            execution_results["market_structure"]["executed"] = True
-        except Exception as e:
-            execution_results["market_structure"]["error"] = str(e)
-            logger.error(f"Error calculating market structure: {str(e)}")
-            
-        try:
-            mtf_results = calculate_multi_timeframe_analysis()
-            if mtf_results and isinstance(mtf_results, dict):
-                result.update(mtf_results)
-            execution_results["multi_timeframe_analysis"]["executed"] = True
-        except Exception as e:
-            execution_results["multi_timeframe_analysis"]["error"] = str(e)
-            logger.error(f"Error calculating multi-timeframe analysis: {str(e)}")
-            
-        # Call additional indicators function
-        try:
-            add_results = calculate_additional_indicators()
-            if add_results and isinstance(add_results, dict):
-                result.update(add_results)
-            execution_results["additional_indicators"]["executed"] = True
-        except Exception as e:
-            execution_results["additional_indicators"]["error"] = str(e)
-            logger.error(f"Error calculating additional indicators: {str(e)}")
-            
-        # Call patterns function after calculating all other indicators
-        try:
-            adv_patterns_results = calculate_advanced_patterns()
-            if adv_patterns_results and isinstance(adv_patterns_results, dict):
-                result.update(adv_patterns_results)
-            execution_results["advanced_patterns"]["executed"] = True
-        except Exception as e:
-            execution_results["advanced_patterns"]["error"] = str(e)
-            logger.error(f"Error calculating advanced patterns: {str(e)}")
-        
-        # Add execution results to the output
-        result["_execution_info"] = {
-            "success_count": sum(1 for r in execution_results.values() if r["executed"]),
-            "error_count": sum(1 for r in execution_results.values() if r["error"] is not None),
-            "details": execution_results
-        }
-        
-        # Return the collected indicators
-        return result
-    except Exception as e:
-        logger.error(f"Error in technical indicator calculation: {str(e)}")
-        # Return partial results if available, otherwise empty dict
-        return result if result else {}
+        # Collect all results
+        for name, future in calculations.items():
+            try:
+                result = future.result()
+                if isinstance(result, dict):
+                    results.update(result)
+                elif result is True:
+                    # The calculation succeeded but didn't return a dictionary
+                    # The results were likely already added to the main results dictionary
+                    pass
+                elif result is False:
+                    # The calculation failed, ensure there's an error message
+                    if f"{name}_error" not in results:
+                        results[f"{name}_error"] = "Calculation returned False without setting an error message"
+                else:
+                    # Unexpected result type
+                    logger.warning(f"Calculation {name} returned unexpected result type: {type(result)}")
+            except Exception as e:
+                logger.error(f"Error in {name} calculation: {str(e)}")
+                results[f"{name}_error"] = str(e)
+    
+    # Add execution info
+    results["_execution_info"] = {
+        "candles_processed": len(df),
+        "period": f"{df.index[0]} to {df.index[-1]}" if len(df.index) > 0 else "N/A",
+        "timestamp": pd.Timestamp.now().isoformat()
+    }
+    
+    return results
 
 def summarize_pair_data(pair_data):
     """

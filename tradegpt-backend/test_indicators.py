@@ -529,6 +529,214 @@ try:
 except Exception as e:
     log(f"Error testing pivot points and multi-timeframe indicators: {str(e)}")
 
+# Test Smart Money Indicators
+log("\n" + "=" * 50)
+log("TESTING SMART MONEY INDICATORS")
+log("=" * 50)
+
+try:
+    from app.technical_indicators.smart_money_indicators import (
+        liquidity_sweep_analysis, order_block_detection, smart_money_analysis,
+        cumulative_delta_analysis, volatility_regime_detection, market_depth_analysis,
+        funding_liquidation_analysis, cross_asset_correlation
+    )
+    log("Successfully imported smart money indicators!")
+except Exception as e:
+    log(f"Error importing smart money indicators: {str(e)}")
+
+# Test liquidity sweep analysis
+try:
+    log("\n--- Testing Liquidity Sweep Analysis ---")
+    
+    sweeps = liquidity_sweep_analysis(df['high'], df['low'], df['close'], df['volume'])
+    log(f"Liquidity Sweeps - High Sweeps: {len(sweeps['high_sweeps'])}, Low Sweeps: {len(sweeps['low_sweeps'])}")
+    log(f"Current High Sweep: {sweeps['current_high_sweep']}, Current Low Sweep: {sweeps['current_low_sweep']}")
+    
+    if sweeps['high_sweeps']:
+        log(f"Sample High Sweep - Price: {sweeps['high_sweeps'][0]['price']:.4f}, Strength: {sweeps['high_sweeps'][0]['strength']:.2f}")
+    
+    if sweeps['low_sweeps']:
+        log(f"Sample Low Sweep - Price: {sweeps['low_sweeps'][0]['price']:.4f}, Strength: {sweeps['low_sweeps'][0]['strength']:.2f}")
+    
+except Exception as e:
+    log(f"Error testing liquidity sweep analysis: {str(e)}")
+
+# Test order block detection
+try:
+    log("\n--- Testing Order Block Detection ---")
+    
+    order_blocks = order_block_detection(df['open'], df['high'], df['low'], df['close'], df['volume'])
+    log(f"Order Blocks - Bullish: {len(order_blocks['bullish_order_blocks'])}, Bearish: {len(order_blocks['bearish_order_blocks'])}")
+    log(f"Active Blocks - Bullish: {len(order_blocks['active_bullish_blocks'])}, Bearish: {len(order_blocks['active_bearish_blocks'])}")
+    
+    if order_blocks['bullish_order_blocks']:
+        log(f"Sample Bullish Block - Low: {order_blocks['bullish_order_blocks'][0]['low']:.4f}, Strength: {order_blocks['bullish_order_blocks'][0]['strength']:.2f}")
+    
+    if order_blocks['bearish_order_blocks']:
+        log(f"Sample Bearish Block - High: {order_blocks['bearish_order_blocks'][0]['high']:.4f}, Strength: {order_blocks['bearish_order_blocks'][0]['strength']:.2f}")
+    
+except Exception as e:
+    log(f"Error testing order block detection: {str(e)}")
+
+# Test smart money analysis
+try:
+    log("\n--- Testing Smart Money Analysis ---")
+    
+    smc = smart_money_analysis(df['open'], df['high'], df['low'], df['close'], df['volume'])
+    log(f"Fair Value Gaps - Bullish: {len(smc['bullish_fvg'])}, Bearish: {len(smc['bearish_fvg'])}")
+    log(f"Equal Levels - Highs: {len(smc['equal_highs'])}, Lows: {len(smc['equal_lows'])}")
+    
+    if smc['bullish_fvg']:
+        log(f"Sample Bullish FVG - Size: {smc['bullish_fvg'][0]['size']:.4f}, Mitigated: {smc['bullish_fvg'][0]['mitigated']}")
+    
+    if smc['equal_highs']:
+        log(f"Sample Equal High - Price: {smc['equal_highs'][0]['price']:.4f}, Swept: {smc['equal_highs'][0]['swept']}")
+    
+except Exception as e:
+    log(f"Error testing smart money analysis: {str(e)}")
+
+# Test cumulative delta analysis
+try:
+    log("\n--- Testing Cumulative Delta Analysis ---")
+    
+    delta = cumulative_delta_analysis(df['open'], df['high'], df['low'], df['close'], df['volume'])
+    log(f"Cumulative Delta - Divergences: {len(delta['delta_divergences'])}")
+    
+    # Check first and last values of delta
+    if len(delta['delta']) > 0:
+        log(f"Delta First: {delta['delta'][0]:.2f}, Last: {delta['delta'][-1]:.2f}")
+    
+    # Check first and last values of cumulative delta
+    if len(delta['cumulative_delta']) > 0:
+        log(f"Cumulative Delta First: {delta['cumulative_delta'][0]:.2f}, Last: {delta['cumulative_delta'][-1]:.2f}")
+    
+    # Check a few divergences if available
+    if delta['delta_divergences']:
+        log(f"Sample Divergence - Type: {delta['delta_divergences'][0]['type']}, Price: {delta['delta_divergences'][0]['price']:.4f}")
+    
+except Exception as e:
+    log(f"Error testing cumulative delta analysis: {str(e)}")
+
+# Test volatility regime detection
+try:
+    log("\n--- Testing Volatility Regime Detection ---")
+    
+    vol_regime = volatility_regime_detection(df['close'], df['high'], df['low'])
+    log(f"Volatility Regime: {vol_regime['regime']}")
+    log(f"Volatility Percentile: {vol_regime['volatility_percentile']}")
+    log(f"Volatility Ratio: {vol_regime['volatility_ratio']:.4f}")
+    log(f"Short ATR: {vol_regime['short_atr']:.4f}, Long ATR: {vol_regime['long_atr']:.4f}")
+    
+    # Check indicator adjustments based on regime
+    log(f"Adjusted RSI Period: {vol_regime['indicator_adjustments']['rsi_period']}")
+    log(f"Adjusted MACD Fast Period: {vol_regime['indicator_adjustments']['macd_fast']}")
+    log(f"Adjusted ATR Multiplier: {vol_regime['indicator_adjustments']['atr_multiplier']:.2f}")
+    
+except Exception as e:
+    log(f"Error testing volatility regime detection: {str(e)}")
+
+# Test market depth analysis with mock data
+try:
+    log("\n--- Testing Market Depth Analysis ---")
+    
+    # Create mock order book data
+    current_price = 100.0
+    bid_levels = [99.9, 99.8, 99.5, 99.0, 98.5, 98.0, 97.0, 96.0, 95.0]
+    ask_levels = [100.1, 100.2, 100.5, 101.0, 101.5, 102.0, 103.0, 104.0, 105.0]
+    volumes = [10, 15, 25, 50, 100, 75, 25, 10, 5]
+    
+    depth = market_depth_analysis(current_price, bid_levels, ask_levels, volumes)
+    log(f"Market Depth - Bid/Ask Imbalance: {depth['bid_ask_imbalance']:.4f}")
+    log(f"Buy Pressure: {depth['buy_pressure']:.2f}, Sell Pressure: {depth['sell_pressure']:.2f}")
+    log(f"Support Clusters: {len(depth['support_clusters'])}, Resistance Clusters: {len(depth['resistance_clusters'])}")
+    
+    if depth['support_clusters']:
+        log(f"Sample Support Cluster - Price: {depth['support_clusters'][0]['price']:.4f}, Relative Size: {depth['support_clusters'][0]['relative_size']:.4f}")
+    
+    if depth['resistance_clusters']:
+        log(f"Sample Resistance Cluster - Price: {depth['resistance_clusters'][0]['price']:.4f}, Relative Size: {depth['resistance_clusters'][0]['relative_size']:.4f}")
+    
+except Exception as e:
+    log(f"Error testing market depth analysis: {str(e)}")
+
+# Test funding rate analysis with mock data
+try:
+    log("\n--- Testing Funding Rate Analysis ---")
+    
+    # Create mock funding and liquidation data
+    current_price = 100.0
+    dates = pd.date_range(start='2022-01-01', periods=30)
+    
+    # Create sample funding rates (fluctuating between positive and negative)
+    funding_rate = pd.Series([
+        0.0001, 0.0002, 0.0003, 0.0002, 0.0001, 0.0000, -0.0001, -0.0002, -0.0001, 0.0000,
+        0.0001, 0.0003, 0.0005, 0.0004, 0.0003, 0.0001, 0.0000, -0.0001, -0.0003, -0.0005,
+        -0.0003, -0.0001, 0.0000, 0.0001, 0.0002, 0.0001, 0.0000, -0.0001, -0.0002, -0.0001
+    ], index=dates)
+    
+    # Create sample liquidation data
+    long_liquidations = pd.Series([
+        100, 200, 150, 300, 500, 1200, 300, 200, 150, 100,
+        200, 150, 100, 200, 300, 500, 1500, 300, 200, 150,
+        100, 200, 300, 250, 150, 100, 200, 150, 100, 200
+    ], index=dates)
+    
+    short_liquidations = pd.Series([
+        150, 250, 200, 150, 300, 200, 1000, 600, 300, 200,
+        150, 100, 200, 150, 300, 200, 100, 1200, 500, 300,
+        200, 150, 100, 200, 150, 300, 200, 150, 100, 200
+    ], index=dates)
+    
+    # Create sample open interest data
+    open_interest = pd.Series([
+        10000, 10200, 10400, 10500, 10300, 10100, 10200, 10400, 10600, 10800,
+        11000, 11200, 11500, 11800, 12000, 12200, 12100, 11900, 11700, 11500,
+        11300, 11100, 11000, 10900, 10800, 10700, 10900, 11100, 11300, 11500
+    ], index=dates)
+    
+    funding = funding_liquidation_analysis(current_price, funding_rate, long_liquidations, short_liquidations, open_interest)
+    log(f"Funding Analysis - Trend: {funding['funding_trend']}")
+    log(f"Current Funding Rate: {funding['current_funding']:.6f}, Avg Funding: {funding['avg_funding']:.6f}")
+    log(f"Open Interest Change: {funding['open_interest_change']:.2f}%")
+    log(f"Market Sentiment: {funding['market_sentiment']}")
+    log(f"Long Liquidation Clusters: {len(funding['long_liquidation_clusters'])}")
+    log(f"Short Liquidation Clusters: {len(funding['short_liquidation_clusters'])}")
+    
+except Exception as e:
+    log(f"Error testing funding rate analysis: {str(e)}")
+
+# Test cross-asset correlation with mock data
+try:
+    log("\n--- Testing Cross-Asset Correlation ---")
+    
+    # Create mock price data for main asset and related assets
+    dates = pd.date_range(start='2022-01-01', periods=100)
+    
+    # Main asset (e.g., Bitcoin)
+    main_asset = pd.Series(np.cumsum(np.random.normal(0.002, 0.02, 100)), index=dates)
+    
+    # Related assets (e.g., Ethereum, S&P 500, Gold)
+    related_assets = {
+        "ETH": pd.Series(np.cumsum(np.random.normal(0.002, 0.025, 100) + 0.0005 * main_asset.values), index=dates),  # Positively correlated
+        "SPX": pd.Series(np.cumsum(np.random.normal(0.001, 0.01, 100) + 0.0001 * main_asset.values), index=dates),   # Weakly correlated
+        "GOLD": pd.Series(np.cumsum(np.random.normal(0.0005, 0.008, 100) - 0.0002 * main_asset.values), index=dates) # Negatively correlated
+    }
+    
+    corr = cross_asset_correlation(main_asset, related_assets)
+    
+    log(f"Strongest Positive Correlation: {corr['strongest_positive']['asset']} ({corr['strongest_positive']['correlation']:.4f})")
+    log(f"Strongest Negative Correlation: {corr['strongest_negative']['asset']} ({corr['strongest_negative']['correlation']:.4f})")
+    
+    # Check correlations by timeframe
+    for period in ['14d', '30d', '90d']:
+        if period in corr['correlations']:
+            log(f"\nCorrelations for {period}:")
+            for asset, data in corr['correlations'][period].items():
+                log(f"  - {asset}: {data['correlation']:.4f} ({data['strength']})")
+    
+except Exception as e:
+    log(f"Error testing cross-asset correlation: {str(e)}")
+
 # Test Complete
 log("\n" + "=" * 50)
 log("TESTING COMPLETE")
