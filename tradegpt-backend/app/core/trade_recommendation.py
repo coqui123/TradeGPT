@@ -48,6 +48,16 @@ Pay special attention to the following advanced market analysis elements if avai
 
 3. Divergences - Check for regular and hidden divergences in RSI and MACD. Regular divergences indicate potential reversals, while hidden divergences confirm the current trend. Consider the strength of divergences in your analysis.
 
+4. Elliott Wave Patterns - If Elliott Wave patterns have been detected, consider the current position in the wave cycle and confidence level of the pattern. Incorporate this into your overall trend analysis.
+
+5. Mean Reversion Index - Utilize this indicator to identify potential overbought or oversold conditions that may lead to mean reversion opportunities. Values above +50 suggest price is likely to revert downward, while values below -50 suggest price is likely to revert upward.
+
+6. Heikin-Ashi Analysis - Consider the Heikin-Ashi trend information for a smoothed view of the market direction. This can help filter out market noise and provide clearer trend signals than traditional candlesticks.
+
+7. Order Flow Analysis - If bid/ask volume data is available, examine buying/selling pressure, cumulative delta, and absorption zones to identify potential institutional activity and smart money movements.
+
+8. Stochastic RSI - Use this indicator to identify overbought/oversold conditions with greater sensitivity than regular RSI. Look for signal line crossovers as potential entry/exit triggers.
+
 Base your response on facts from the data provided, not general market knowledge or assumptions.
 
 Format your response as a JSON object with the following structure:
@@ -74,7 +84,8 @@ Format your response as a JSON object with the following structure:
     "analysis_details": {{
         "technical_analysis": "summary",
         "market_structure": "summary",
-        "risk_assessment": "summary"
+        "risk_assessment": "summary",
+        "advanced_patterns": "summary of harmonic patterns, elliott waves, and other advanced patterns detected"
     }}
 }}
 ```
@@ -285,11 +296,12 @@ def generate_trade_recommendation(combined_data: str, user_balance: Dict[str, An
       5. SL < current_price  
 
     **analysis**  
-    1. Trend: EMA(9,12,21,26,50), Market Structure, Ichimoku  
-    2. Momentum: RSI, MACD, Stochastic, CCI, ADX(>25)  
-    3. Volume: OBV, ADL, MFI(14,21,50), CMF, Klinger  
-    4. Targets: Swing levels, S/R zones, Fib(1.618,2.618), VPOC  
-    5. Risk:  
+    1. Trend: EMA(9,12,21,26,50), Market Structure, Ichimoku, Heikin-Ashi, Supertrend
+    2. Momentum: RSI, MACD, Stochastic, Stochastic RSI, CCI, ADX(>25), Mean Reversion Index  
+    3. Volume: OBV, ADL, MFI(14,21,50), CMF, Klinger, Volume Profile, Order Flow (if available)
+    4. Patterns: Harmonic Patterns, Elliott Wave Patterns, Divergences
+    5. Targets: Swing levels, S/R zones, Fib(1.618,2.618), VPOC, HVN/LVN  
+    6. Risk:  
        - SL: ATR × [1.5|2|3] (ADX <20|20-40|>40)  
        - RR: 1:3(LOW), 1:2.5(MED), 1:2(HIGH)  
        - Size: (Account×1%)/(Entry-SL)  
@@ -334,6 +346,11 @@ def generate_trade_recommendation(combined_data: str, user_balance: Dict[str, An
                     "type": "swing high/supply zone/fibonacci"
                 }}
             ]
+        }},
+        "advanced_patterns": {{
+            "harmonic_patterns": [pattern type and confidence],
+            "elliott_wave": [current position in wave cycle],
+            "divergences": [type and strength of divergences]
         }}
     }}
 

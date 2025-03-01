@@ -1111,4 +1111,382 @@ def divergence_scanner(price, oscillator, window=20):
         "hidden_bullish": hidden_bullish,
         "hidden_bearish": hidden_bearish,
         "strength": strength
+    }
+
+def stochastic_rsi(close, rsi_period=14, stoch_period=14, k_period=3, d_period=3):
+    """
+    Calculate Stochastic RSI
+    
+    Parameters:
+    -----------
+    close : pd.Series
+        Series of close prices
+    rsi_period : int
+        Period for RSI calculation
+    stoch_period : int
+        Period for Stochastic calculation
+    k_period : int
+        Smoothing for %K line
+    d_period : int
+        Smoothing for %D line
+        
+    Returns:
+    --------
+    pd.Series, pd.Series
+        %K and %D values of Stochastic RSI
+    """
+    from app.technical_indicators.basic_indicators import relative_strength_index
+    
+    # Calculate RSI
+    rsi = relative_strength_index(close, window=rsi_period)
+    
+    # Calculate Stochastic RSI
+    stoch_rsi = pd.Series(index=close.index, dtype='float64')
+    
+    for i in range(stoch_period, len(rsi)):
+        rsi_lookback = rsi[i-stoch_period+1:i+1]
+        rsi_min = rsi_lookback.min()
+        rsi_max = rsi_lookback.max()
+        
+        if rsi_max - rsi_min != 0:
+            stoch_rsi[i] = (rsi[i] - rsi_min) / (rsi_max - rsi_min)
+        else:
+            stoch_rsi[i] = 0
+    
+    # Calculate %K and %D
+    k = 100 * stoch_rsi.rolling(window=k_period).mean()
+    d = k.rolling(window=d_period).mean()
+    
+    return k, d
+
+def elliott_wave_tracker(high, low, close, volume, threshold=0.3, window_size=50):
+    """
+    Track potential Elliott Wave patterns
+    
+    Parameters:
+    -----------
+    high : pd.Series
+        Series of high prices
+    low : pd.Series
+        Series of low prices
+    close : pd.Series
+        Series of close prices
+    volume : pd.Series
+        Series of volume data
+    threshold : float
+        Threshold for wave identification
+    window_size : int
+        Lookback window for pattern identification
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing potential Elliott Wave patterns and characteristics
+    """
+    # Identify potential swing points
+    swings = []
+    swing_types = []  # 1 for high, -1 for low
+    
+    # Simple swing identification
+    for i in range(5, len(close) - 5):
+        # Check if this is a local maximum
+        if all(high.iloc[i] > high.iloc[i-j] for j in range(1, 5)) and \
+           all(high.iloc[i] > high.iloc[i+j] for j in range(1, 5)):
+            swings.append(i)
+            swing_types.append(1)
+        
+        # Check if this is a local minimum
+        elif all(low.iloc[i] < low.iloc[i-j] for j in range(1, 5)) and \
+             all(low.iloc[i] < low.iloc[i+j] for j in range(1, 5)):
+            swings.append(i)
+            swing_types.append(-1)
+    
+    # Not enough swing points to identify patterns
+    if len(swings) < 9:
+        return {
+            "wave_count": 0,
+            "impulse_waves": [],
+            "corrective_waves": [],
+            "current_position": "undefined",
+            "confidence": 0.0
+        }
+    
+    # Analyze the last potential pattern within the window
+    recent_swings = [i for i in swings if i >= len(close) - window_size]
+    recent_types = [swing_types[swings.index(i)] for i in recent_swings]
+    
+    # Need at least 9 points for a complete cycle (5 impulse + 3 corrective + final)
+    if len(recent_swings) < 9:
+        return {
+            "wave_count": len(recent_swings),
+            "impulse_waves": [],
+            "corrective_waves": [],
+            "current_position": "developing",
+            "confidence": 0.0
+        }
+    
+    # Get prices at swing points
+    swing_prices = [close.iloc[i] for i in recent_swings]
+    
+    # Check for impulse wave pattern
+    impulse_waves = []
+    corrective_waves = []
+    confidence = 0.0
+    
+    # Basic check for 5-3 pattern
+    # Impulse waves should be in the trend direction
+    # Waves 1, 3, 5 should be in primary trend direction
+    # Waves 2, 4 should be corrections
+    
+    # Find 5 alternating waves first (potential impulse)
+    i = 0
+    while i < len(recent_types) - 4:
+        if (recent_types[i] == recent_types[i+2] == recent_types[i+4] and
+            recent_types[i+1] == recent_types[i+3] and
+            recent_types[i] != recent_types[i+1]):
+            
+            impulse_start = recent_swings[i]
+            impulse_waves = [
+                {"wave": 1, "index": recent_swings[i], "price": swing_prices[i]},
+                {"wave": 2, "index": recent_swings[i+1], "price": swing_prices[i+1]},
+                {"wave": 3, "index": recent_swings[i+2], "price": swing_prices[i+2]},
+                {"wave": 4, "index": recent_swings[i+3], "price": swing_prices[i+3]},
+                {"wave": 5, "index": recent_swings[i+4], "price": swing_prices[i+4]}
+            ]
+            
+            # Check for corrective waves
+            if i + 7 < len(recent_swings):
+                corrective_start = recent_swings[i+5]
+                corrective_waves = [
+                    {"wave": "A", "index": recent_swings[i+5], "price": swing_prices[i+5]},
+                    {"wave": "B", "index": recent_swings[i+6], "price": swing_prices[i+6]},
+                    {"wave": "C", "index": recent_swings[i+7], "price": swing_prices[i+7]}
+                ]
+                
+                # Check if the pattern follows Elliott Wave rules
+                # 1. Wave 3 should not be the shortest among 1, 3, 5
+                # 2. Wave 4 should not overlap with Wave 1
+                if ((abs(impulse_waves[2]["price"] - impulse_waves[0]["price"]) > 
+                    abs(impulse_waves[0]["price"] - impulse_waves[0]["price"]) or
+                    abs(impulse_waves[2]["price"] - impulse_waves[0]["price"]) > 
+                    abs(impulse_waves[4]["price"] - impulse_waves[3]["price"])) and
+                    ((recent_types[i] == 1 and impulse_waves[3]["price"] > impulse_waves[0]["price"]) or
+                     (recent_types[i] == -1 and impulse_waves[3]["price"] < impulse_waves[0]["price"]))):
+                    
+                    confidence = 0.7  # Found pattern with reasonable confidence
+                    break
+            
+            # If we found impulse but not enough points for corrective
+            elif i + 5 < len(recent_swings):
+                confidence = 0.4  # Only identified impulse waves
+                break
+                
+        i += 1
+    
+    # Determine current position
+    if confidence > 0:
+        if impulse_waves and len(corrective_waves) == 3:
+            current_position = "Corrective phase complete"
+        elif impulse_waves and len(corrective_waves) < 3 and len(corrective_waves) > 0:
+            current_position = f"Corrective wave {['A','B','C'][len(corrective_waves)-1]}"
+        elif impulse_waves:
+            current_position = f"Impulse wave {5 if len(impulse_waves) >= 5 else len(impulse_waves)} complete"
+        else:
+            current_position = "undefined"
+    else:
+        current_position = "No clear Elliott Wave pattern"
+    
+    return {
+        "wave_count": len(impulse_waves) + len(corrective_waves),
+        "impulse_waves": impulse_waves,
+        "corrective_waves": corrective_waves,
+        "current_position": current_position,
+        "confidence": confidence
+    }
+
+def mean_reversion_index(close, high, low, period=14, std_dev_multiplier=2.0):
+    """
+    Calculate Mean Reversion Index to identify potential mean reversion opportunities
+    
+    Parameters:
+    -----------
+    close : pd.Series
+        Series of close prices
+    high : pd.Series
+        Series of high prices
+    low : pd.Series
+        Series of low prices
+    period : int
+        Lookback period
+    std_dev_multiplier : float
+        Standard deviation multiplier for bands
+        
+    Returns:
+    --------
+    pd.Series, pd.Series, pd.Series
+        Mean Reversion Index, Upper Band, Lower Band
+    """
+    # Calculate simple moving average
+    sma = close.rolling(window=period).mean()
+    
+    # Calculate standard deviation
+    std_dev = close.rolling(window=period).std()
+    
+    # Calculate upper and lower bands
+    upper_band = sma + (std_dev * std_dev_multiplier)
+    lower_band = sma - (std_dev * std_dev_multiplier)
+    
+    # Calculate distance from mean (normalized by standard deviation)
+    mean_distance = (close - sma) / std_dev
+    
+    # Calculate mean reversion index (-1 to 1)
+    mri = mean_distance.rolling(window=period).mean() * -1  # Invert so positive values suggest reversion to mean
+    
+    # Calculate true range and ATR for normalization
+    true_range = pd.concat([
+        high - low,
+        abs(high - close.shift()),
+        abs(low - close.shift())
+    ], axis=1).max(axis=1)
+    
+    atr = true_range.rolling(window=period).mean()
+    
+    # Normalize MRI based on historical range
+    mri_min = mri.rolling(window=period*2).min()
+    mri_max = mri.rolling(window=period*2).max()
+    mri_range = mri_max - mri_min
+    
+    # Prevent division by zero
+    mri_range = mri_range.replace(0, 1)
+    
+    normalized_mri = (mri - mri_min) / mri_range
+    
+    # Scale to -100 to 100 range
+    scaled_mri = (normalized_mri * 200) - 100
+    
+    return scaled_mri, upper_band, lower_band
+
+def market_breadth_indicators(advances, declines, unchanged, period=10):
+    """
+    Calculate Market Breadth Indicators for broader market analysis
+    
+    Parameters:
+    -----------
+    advances : pd.Series
+        Series of number of advancing issues
+    declines : pd.Series
+        Series of number of declining issues
+    unchanged : pd.Series
+        Series of number of unchanged issues
+    period : int
+        Lookback period for calculations
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing various market breadth indicators
+    """
+    # Calculate Advance-Decline Line
+    adl = (advances - declines).cumsum()
+    
+    # Calculate Advance-Decline Ratio
+    adr = advances / declines
+    
+    # Calculate McClellan Oscillator
+    ema19 = (advances - declines).ewm(span=19, adjust=False).mean()
+    ema39 = (advances - declines).ewm(span=39, adjust=False).mean()
+    mcclellan_oscillator = ema19 - ema39
+    
+    # Calculate McClellan Summation Index
+    summation_index = mcclellan_oscillator.cumsum()
+    
+    # Calculate Arms Index (TRIN)
+    trin = (advances / declines) / (advances.sum() / declines.sum())
+    
+    # Calculate Absolute Breadth Index
+    abi = abs(advances - declines) / (advances + declines + unchanged)
+    
+    # Calculate High-Low Index
+    high_low_index = advances / (advances + declines) * 100
+    high_low_diff = advances - declines
+    
+    # Calculate Bullish Percent Index (using a simple rolling window approximation)
+    bpi = (advances / (advances + declines) * 100).rolling(window=period).mean()
+    
+    return {
+        "advance_decline_line": adl,
+        "advance_decline_ratio": adr,
+        "mcclellan_oscillator": mcclellan_oscillator,
+        "mcclellan_summation_index": summation_index,
+        "trin": trin,
+        "absolute_breadth_index": abi,
+        "high_low_index": high_low_index,
+        "high_low_diff": high_low_diff,
+        "bullish_percent_index": bpi
+    }
+
+def orderflow_analysis(price, volume, bid_volume, ask_volume, delta_threshold=0.5):
+    """
+    Perform basic order flow analysis to identify buying/selling pressure
+    
+    Parameters:
+    -----------
+    price : pd.Series
+        Series of price data
+    volume : pd.Series
+        Series of total volume
+    bid_volume : pd.Series
+        Series of bid volume (buying volume)
+    ask_volume : pd.Series
+        Series of ask volume (selling volume)
+    delta_threshold : float
+        Threshold for significant delta imbalance (0-1)
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing order flow metrics
+    """
+    # Calculate basic delta (difference between buying and selling volume)
+    delta = bid_volume - ask_volume
+    
+    # Calculate cumulative delta
+    cumulative_delta = delta.cumsum()
+    
+    # Calculate delta percentage (normalized by total volume)
+    delta_percent = delta / volume
+    
+    # Identify significant imbalances
+    significant_buying = delta_percent > delta_threshold
+    significant_selling = delta_percent < -delta_threshold
+    
+    # Calculate imbalance ratio
+    imbalance_ratio = bid_volume / ask_volume
+    
+    # Calculate volume weighted average price (VWAP)
+    vwap = (price * volume).cumsum() / volume.cumsum()
+    
+    # Calculate Volume at Price Points (simplified)
+    price_rounded = price.round(decimals=2)  # Round to 2 decimal places for grouping
+    volume_profile = volume.groupby(price_rounded).sum()
+    
+    # Calculate average trade size
+    average_trade_size = volume / volume.count()
+    
+    # Identify potential absorption zones (high volume with minimal price movement)
+    price_change = price.pct_change()
+    volume_to_price_ratio = volume / (abs(price_change) + 0.0001)  # Add small value to prevent division by zero
+    absorption_zones = volume_to_price_ratio > volume_to_price_ratio.rolling(window=20).mean() * 2
+    
+    return {
+        "delta": delta,
+        "cumulative_delta": cumulative_delta,
+        "delta_percent": delta_percent,
+        "significant_buying": significant_buying,
+        "significant_selling": significant_selling,
+        "imbalance_ratio": imbalance_ratio,
+        "vwap": vwap,
+        "volume_profile": volume_profile,
+        "average_trade_size": average_trade_size,
+        "absorption_zones": absorption_zones
     } 

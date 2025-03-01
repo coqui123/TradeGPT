@@ -184,7 +184,10 @@ try:
         coppock_curve, vwap, klinger_oscillator, ichimoku_cloud, supertrend,
         heikin_ashi, squeeze_momentum, ehlers_fisher_transform, chande_momentum_oscillator,
         camarilla_pivot_points, woodie_pivot_points, demark_pivot_points, elder_triple_screen,
-        volume_profile, harmonic_patterns, divergence_scanner
+        volume_profile, harmonic_patterns, divergence_scanner,
+        # Add new indicators to import
+        stochastic_rsi, elliott_wave_tracker, mean_reversion_index, 
+        market_breadth_indicators, orderflow_analysis
     )
     log("Successfully imported advanced indicators!")
 except Exception as e:
@@ -363,6 +366,138 @@ try:
     
 except Exception as e:
     log(f"Error testing divergence scanner: {str(e)}")
+
+# Test newly added indicators
+log("\n" + "=" * 50)
+log("TESTING NEWLY ADDED INDICATORS")
+log("=" * 50)
+
+# Test Stochastic RSI
+try:
+    log("\n--- Testing Stochastic RSI ---")
+    
+    # Stochastic RSI
+    k, d = stochastic_rsi(df['close'], 
+                          rsi_period=14, 
+                          stoch_period=14, 
+                          k_period=3, 
+                          d_period=3)
+    log(f"Stochastic RSI - %K: {k.iloc[-1]:.4f}, %D: {d.iloc[-1]:.4f}")
+    log(f"Stochastic RSI - Overbought: {k.iloc[-1] > 80}, Oversold: {k.iloc[-1] < 20}")
+    
+    # Test different periods
+    k_short, d_short = stochastic_rsi(df['close'], 
+                                    rsi_period=7, 
+                                    stoch_period=7, 
+                                    k_period=3, 
+                                    d_period=3)
+    log(f"Short-term Stochastic RSI - %K: {k_short.iloc[-1]:.4f}, %D: {d_short.iloc[-1]:.4f}")
+    
+except Exception as e:
+    log(f"Error testing Stochastic RSI: {str(e)}")
+
+# Test Elliott Wave Tracker
+try:
+    log("\n--- Testing Elliott Wave Tracker ---")
+    
+    # Elliott Wave Tracker
+    waves = elliott_wave_tracker(df['high'], 
+                                 df['low'], 
+                                 df['close'], 
+                                 df['volume'])
+    
+    log(f"Elliott Wave Tracker - Wave Count: {waves['wave_count']}")
+    log(f"Elliott Wave Tracker - Current Position: {waves['current_position']}")
+    log(f"Elliott Wave Tracker - Confidence: {waves['confidence']:.2f}")
+    
+    # Count of impulse and corrective waves
+    impulse_count = len(waves['impulse_waves'])
+    corrective_count = len(waves['corrective_waves'])
+    log(f"Elliott Wave Tracker - Impulse Waves: {impulse_count}, Corrective Waves: {corrective_count}")
+    
+    # Print individual waves if available
+    if impulse_count > 0:
+        log("Impulse Waves:")
+        for wave in waves['impulse_waves']:
+            log(f"  Wave {wave['wave']} at index {wave['index']} with price {wave['price']:.4f}")
+    
+    if corrective_count > 0:
+        log("Corrective Waves:")
+        for wave in waves['corrective_waves']:
+            log(f"  Wave {wave['wave']} at index {wave['index']} with price {wave['price']:.4f}")
+    
+except Exception as e:
+    log(f"Error testing Elliott Wave Tracker: {str(e)}")
+
+# Test Mean Reversion Index
+try:
+    log("\n--- Testing Mean Reversion Index ---")
+    
+    # Mean Reversion Index
+    mri, upper_band, lower_band = mean_reversion_index(df['close'], 
+                                                     df['high'], 
+                                                     df['low'])
+    
+    log(f"Mean Reversion Index - MRI: {mri.iloc[-1]:.4f}")
+    log(f"Mean Reversion Index - Upper Band: {upper_band.iloc[-1]:.4f}")
+    log(f"Mean Reversion Index - Lower Band: {lower_band.iloc[-1]:.4f}")
+    
+    # Test signals
+    buy_signal = mri.iloc[-1] < -50
+    sell_signal = mri.iloc[-1] > 50
+    log(f"Mean Reversion Index - Buy Signal: {buy_signal}, Sell Signal: {sell_signal}")
+    
+    # Test different parameters
+    mri_custom, ub_custom, lb_custom = mean_reversion_index(df['close'], 
+                                                        df['high'], 
+                                                        df['low'],
+                                                        period=7, 
+                                                        std_dev_multiplier=1.5)
+    
+    log(f"Custom Mean Reversion Index - MRI: {mri_custom.iloc[-1]:.4f}")
+    
+except Exception as e:
+    log(f"Error testing Mean Reversion Index: {str(e)}")
+
+# Test Market Breadth Indicators (if available)
+try:
+    log("\n--- Testing Market Breadth Indicators ---")
+    
+    # Create sample market breadth data
+    sample_size = len(df)
+    advances = pd.Series(np.random.randint(100, 500, sample_size))
+    declines = pd.Series(np.random.randint(100, 500, sample_size))
+    unchanged = pd.Series(np.random.randint(10, 50, sample_size))
+    
+    # Market Breadth Indicators
+    mb = market_breadth_indicators(advances, declines, unchanged)
+    
+    log(f"Advance-Decline Line: {mb['advance_decline_line'].iloc[-1]:.4f}")
+    log(f"McClellan Oscillator: {mb['mcclellan_oscillator'].iloc[-1]:.4f}")
+    log(f"Arms Index (TRIN): {mb['trin'].iloc[-1]:.4f}")
+    log(f"Bullish Percent Index: {mb['bullish_percent_index'].iloc[-1]:.4f}")
+    
+except Exception as e:
+    log(f"Error testing Market Breadth Indicators: {str(e)}")
+
+# Test Order Flow Analysis (if available)
+try:
+    log("\n--- Testing Order Flow Analysis ---")
+    
+    # Create sample bid/ask volume data
+    bid_volume = pd.Series(df['volume'] * (0.4 + 0.3 * np.random.random(len(df))))
+    ask_volume = pd.Series(df['volume'] * (0.4 + 0.3 * np.random.random(len(df))))
+    
+    # Order Flow Analysis
+    of = orderflow_analysis(df['close'], df['volume'], bid_volume, ask_volume)
+    
+    log(f"Delta: {of['delta'].iloc[-1]:.4f}")
+    log(f"Cumulative Delta: {of['cumulative_delta'].iloc[-1]:.4f}")
+    log(f"Delta Percent: {of['delta_percent'].iloc[-1]:.4f}")
+    log(f"Imbalance Ratio: {of['imbalance_ratio'].iloc[-1]:.4f}")
+    
+except Exception as e:
+    log(f"Error testing Order Flow Analysis: {str(e)}")
 
 # Test pivot points and multi-timeframe indicators
 try:
