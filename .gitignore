@@ -58,3 +58,5 @@ deno.lock
 # Build outputs
 dist/
 build/
+tradegpt-backend/test_results.txt
+tradegpt-backend/indicator_test_log.txt

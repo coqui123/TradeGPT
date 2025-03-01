@@ -36,8 +36,17 @@ def generate_trade_recommendation_parallel(combined_data: Dict[str, Any], user_b
     
     # Create the final message for comprehensive analysis
     system_prompt = f"""
-You are an expert cryptocurrency trading advisor. Analyze the provided market data for {pair_info} and provide a detailed trading recommendation.
+You are an expert trading analyst specialized in cryptocurrency and forex markets. Analyze the provided market data and generate a detailed trading recommendation for {pair_info}.
+
 Your analysis should consider technical indicators, market structure, and potential risks.
+
+Pay special attention to the following advanced market analysis elements if available:
+
+1. Volume Profile - Identify if price is near high-volume nodes (HVNs) which act as magnets/areas of support/resistance, or low-volume nodes (LVNs) which price tends to move through quickly. The Point of Control (POC) represents the highest volume price level and is significant.
+
+2. Harmonic Patterns - If any harmonic patterns (Gartley, Butterfly, Bat) have been detected, evaluate their completion level and pattern quality. Higher confidence patterns (>75%) should be weighted more heavily in your analysis.
+
+3. Divergences - Check for regular and hidden divergences in RSI and MACD. Regular divergences indicate potential reversals, while hidden divergences confirm the current trend. Consider the strength of divergences in your analysis.
 
 Base your response on facts from the data provided, not general market knowledge or assumptions.
 

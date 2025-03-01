@@ -21,7 +21,9 @@ from app.technical_indicators.advanced_indicators import (
     chaikin_money_flow, parabolic_sar, money_flow_index, percentage_price_oscillator,
     donchian_channels, rate_of_change, commodity_channel_index, awesome_oscillator,
     vortex_indicator, true_strength_index, mass_index, hull_moving_average,
-    coppock_curve, vwap, klinger_oscillator
+    coppock_curve, vwap, klinger_oscillator, ichimoku_cloud, supertrend, heikin_ashi,
+    camarilla_pivot_points, woodie_pivot_points, demark_pivot_points, squeeze_momentum,
+    ehlers_fisher_transform, chande_momentum_oscillator, elder_triple_screen
 )
 
 # Configure logging
@@ -542,59 +544,177 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
         # Pivot Points (traditional)
         pivot, r1, s1, r2, s2, r3, s3 = pivot_points(df['high'].iloc[-2], df['low'].iloc[-2], df['close'].iloc[-2])
         
-        # RSI
-        rsi_value = relative_strength_index(df['close']).iloc[-1]
-        rsi_oversold = rsi_value < 30
-        rsi_overbought = rsi_value > 70
+        # Advanced Pivot Points
+        if 'open' in df.columns:
+            # Camarilla Pivot Points
+            cam_pivot, cam_supports, cam_resistances = camarilla_pivot_points(df['high'].iloc[-2], df['low'].iloc[-2], df['close'].iloc[-2])
+            
+            # Woodie Pivot Points
+            wood_pivot, wood_supports, wood_resistances = woodie_pivot_points(df['open'].iloc[-1], df['high'].iloc[-2], df['low'].iloc[-2], df['close'].iloc[-2])
+            
+            # DeMark Pivot Points
+            demark_pivot, demark_supports, demark_resistances = demark_pivot_points(df['open'].iloc[-1], df['high'].iloc[-2], df['low'].iloc[-2], df['close'].iloc[-2])
+        else:
+            cam_pivot, cam_supports, cam_resistances = None, {}, {}
+            wood_pivot, wood_supports, wood_resistances = None, {}, {}
+            demark_pivot, demark_supports, demark_resistances = None, {}, {}
         
-        # Directional Movement
-        plus_di, minus_di, adx = directional_movement_index(df['high'], df['low'], df['close'])
-        strong_trend = adx.iloc[-1] > 25
+        # Volume Profile Analysis
+        vp = volume_profile(df['high'], df['low'], df['close'], df['volume'], bins=10, window=30)
         
-        # Create individual indicators
-        adx_value = float(adx.iloc[-1])
-        plus_di_value = float(plus_di.iloc[-1])
-        minus_di_value = float(minus_di.iloc[-1])
-        rsi_value_float = float(rsi_value)
-        trend_strength = "strong" if adx_value > 25 else "weak"
+        # Harmonic Patterns
+        hp = harmonic_patterns(df['high'], df['low'], df['close'])
         
-        # Compile Market Structure Analysis
-        market_structure = {
+        # Divergence with RSI
+        rsi = relative_strength_index(df['close'])
+        rsi_divergence = divergence_scanner(df['close'], rsi)
+        
+        # Divergence with MACD
+        macd_line, _, _ = macd(df['close'])
+        macd_divergence = divergence_scanner(df['close'], macd_line)
+        
+        # Return comprehensive market structure analysis
+        return {
             "Market_Structure": {
                 "current_price": float(current_price),
-                "sma50": float(sma50),
-                "sma200": float(sma200),
+                "trend": "bullish" if above_50ma and above_200ma else "bearish" if not above_50ma and not above_200ma else "mixed",
                 "golden_cross": bool(golden_cross),
                 "death_cross": bool(death_cross),
                 "above_50ma": bool(above_50ma),
                 "above_200ma": bool(above_200ma),
+                "market_regime": float(safe_get_value(regime, 0)),
+                "high_volatility": bool(volatility_flag),
+                
+                # Standard Pivot Points
                 "pivot": float(pivot),
-                "resistance1": float(r1),
-                "resistance2": float(r2),
-                "resistance3": float(r3),
-                "support1": float(s1),
-                "support2": float(s2),
-                "support3": float(s3),
-                "rsi": rsi_value_float,
-                "rsi_oversold": bool(rsi_oversold),
-                "rsi_overbought": bool(rsi_overbought),
-                "adx": adx_value,
-                "strong_trend": bool(strong_trend),
-                "trend_direction": "bullish" if plus_di_value > minus_di_value else "bearish",
-                "regime": regime,
-                "volatility_flag": volatility_flag
+                "r1": float(r1),
+                "r2": float(r2),
+                "r3": float(r3),
+                "s1": float(s1),
+                "s2": float(s2),
+                "s3": float(s3),
+                
+                # Advanced Pivot Points
+                "camarilla": {
+                    "pivot": float(cam_pivot) if cam_pivot is not None else None,
+                    "r1": float(cam_resistances.get('r1', 0)) if cam_resistances else None,
+                    "r2": float(cam_resistances.get('r2', 0)) if cam_resistances else None,
+                    "r3": float(cam_resistances.get('r3', 0)) if cam_resistances else None,
+                    "r4": float(cam_resistances.get('r4', 0)) if cam_resistances else None,
+                    "s1": float(cam_supports.get('s1', 0)) if cam_supports else None,
+                    "s2": float(cam_supports.get('s2', 0)) if cam_supports else None,
+                    "s3": float(cam_supports.get('s3', 0)) if cam_supports else None,
+                    "s4": float(cam_supports.get('s4', 0)) if cam_supports else None
+                },
+                "woodie": {
+                    "pivot": float(wood_pivot) if wood_pivot is not None else None,
+                    "r1": float(wood_resistances.get('r1', 0)) if wood_resistances else None,
+                    "r2": float(wood_resistances.get('r2', 0)) if wood_resistances else None,
+                    "s1": float(wood_supports.get('s1', 0)) if wood_supports else None,
+                    "s2": float(wood_supports.get('s2', 0)) if wood_supports else None
+                },
+                "demark": {
+                    "pivot": float(demark_pivot) if demark_pivot is not None else None,
+                    "r1": float(demark_resistances.get('r1', 0)) if demark_resistances else None,
+                    "s1": float(demark_supports.get('s1', 0)) if demark_supports else None
+                },
+                
+                # Volume Profile
+                "volume_profile": {
+                    "poc": float(vp["poc"]) if vp["poc"] is not None else None,
+                    "vah": float(vp["vah"]) if vp["vah"] is not None else None,
+                    "val": float(vp["val"]) if vp["val"] is not None else None,
+                    "hvn_count": len(vp["hvn"]),
+                    "lvn_count": len(vp["lvn"]),
+                    "hvn_prices": [float(price) for price in vp["hvn"][:3]] if vp["hvn"] else []  # Include top 3 HVNs
+                },
+                
+                # Harmonic Patterns
+                "harmonic_patterns": {
+                    "patterns_found": len(hp["patterns"]),
+                    "active_patterns": [
+                        {
+                            "type": pattern["type"],
+                            "confidence": pattern["confidence"],
+                            "completion_price": float(pattern["completion_price"])
+                        }
+                        for pattern in hp["patterns"][:2]  # Include top 2 patterns
+                    ] if hp["patterns"] else []
+                },
+                
+                # Divergences
+                "divergences": {
+                    "rsi": {
+                        "regular_bullish": bool(rsi_divergence["regular_bullish"]),
+                        "regular_bearish": bool(rsi_divergence["regular_bearish"]),
+                        "hidden_bullish": bool(rsi_divergence["hidden_bullish"]),
+                        "hidden_bearish": bool(rsi_divergence["hidden_bearish"]),
+                        "strength": float(rsi_divergence["strength"])
+                    },
+                    "macd": {
+                        "regular_bullish": bool(macd_divergence["regular_bullish"]),
+                        "regular_bearish": bool(macd_divergence["regular_bearish"]),
+                        "hidden_bullish": bool(macd_divergence["hidden_bullish"]),
+                        "hidden_bearish": bool(macd_divergence["hidden_bearish"]),
+                        "strength": float(macd_divergence["strength"])
+                    }
+                }
             }
         }
-        
-        # Return all the relevant data
-        return {
-            "Market_Structure": market_structure["Market_Structure"],
-            "ADX": adx_value,
-            "Plus_DI": plus_di_value,
-            "Minus_DI": minus_di_value,
-            "RSI": rsi_value_float,
-            "Trend_Strength": trend_strength
-        }
+    
+    # Calculate multi-timeframe analysis if weekly data is available
+    def calculate_multi_timeframe_analysis():
+        try:
+            # Check if we have enough data for daily timeframe
+            if len(df) < 50:
+                return {}
+                
+            # Create weekly data by resampling
+            # This is a simple approximation of weekly data for demonstration
+            # In production, you'd want to pass actual weekly data
+            weekly_df = df.copy()
+            weekly_df.index = pd.to_datetime(weekly_df.index) if not isinstance(weekly_df.index, pd.DatetimeIndex) else weekly_df.index
+            weekly_df = weekly_df.resample('W').agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            
+            # Only calculate if we have enough weekly data
+            if len(weekly_df) < 15:
+                return {}
+                
+            # Calculate Elder Triple Screen components
+            elder_results = elder_triple_screen(
+                df['close'], df['high'], df['low'], df['volume'],
+                weekly_df['close'], weekly_df['high'], weekly_df['low'], weekly_df['volume']
+            )
+            
+            # Format results
+            multi_tf_results = {
+                "Elder_Triple_Screen": {
+                    "weekly_trend": int(elder_results['weekly_trend']),
+                    "weekly_rsi": float(safe_get_value(elder_results['weekly_rsi'])),
+                    "impulse": int(safe_get_value(elder_results['impulse'])),
+                    "buy_signal": bool(safe_get_value(elder_results['buy_signal'])),
+                    "sell_signal": bool(safe_get_value(elder_results['sell_signal'])),
+                    "force_index": float(safe_get_value(elder_results['force_index'])),
+                    "impulse_data": elder_results['impulse'].values.tolist() if isinstance(elder_results['impulse'], pd.Series) else [],
+                    "weekly_rsi_data": elder_results['weekly_rsi'].values.tolist() if isinstance(elder_results['weekly_rsi'], pd.Series) else [],
+                    "force_index_data": elder_results['force_index'].values.tolist() if isinstance(elder_results['force_index'], pd.Series) else []
+                }
+            }
+            
+            return multi_tf_results
+        except Exception as e:
+            logger.error(f"Error calculating multi-timeframe analysis: {str(e)}")
+            return {
+                "Elder_Triple_Screen": {
+                    "error": str(e)
+                }
+            }
     
     # Calculate Additional Technical Indicators that weren't included above
     def calculate_additional_indicators():
@@ -712,6 +832,93 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 }
             }
             
+            # Ichimoku Cloud
+            tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b, chikou_span = ichimoku_cloud(df['high'], df['low'], df['close'])
+            ichimoku_results = {
+                "Ichimoku": {
+                    "tenkan_sen": safe_get_value(tenkan_sen),
+                    "kijun_sen": safe_get_value(kijun_sen),
+                    "senkou_span_a": safe_get_value(senkou_span_a),
+                    "senkou_span_b": safe_get_value(senkou_span_b),
+                    "chikou_span": safe_get_value(chikou_span),
+                    "tenkan_data": tenkan_sen.values.tolist(),
+                    "kijun_data": kijun_sen.values.tolist(),
+                    "senkou_a_data": senkou_span_a.values.tolist(),
+                    "senkou_b_data": senkou_span_b.values.tolist(),
+                    "chikou_data": chikou_span.values.tolist(),
+                    "bullish": safe_get_value(senkou_span_a > senkou_span_b),
+                    "price_above_cloud": safe_get_value(df['close'] > senkou_span_a) and safe_get_value(df['close'] > senkou_span_b)
+                }
+            }
+            
+            # Supertrend
+            supertrend_line, supertrend_direction = supertrend(df['high'], df['low'], df['close'])
+            supertrend_results = {
+                "Supertrend": {
+                    "value": safe_get_value(supertrend_line),
+                    "direction": safe_get_value(supertrend_direction),
+                    "data": supertrend_line.values.tolist(),
+                    "direction_data": supertrend_direction.values.tolist(),
+                    "bullish": safe_get_value(supertrend_direction) == 1
+                }
+            }
+            
+            # Heikin-Ashi
+            if 'open' in df.columns:
+                ha_open, ha_high, ha_low, ha_close = heikin_ashi(df['open'], df['high'], df['low'], df['close'])
+                heikin_ashi_results = {
+                    "Heikin_Ashi": {
+                        "open": safe_get_value(ha_open),
+                        "high": safe_get_value(ha_high),
+                        "low": safe_get_value(ha_low),
+                        "close": safe_get_value(ha_close),
+                        "open_data": ha_open.values.tolist(),
+                        "high_data": ha_high.values.tolist(),
+                        "low_data": ha_low.values.tolist(),
+                        "close_data": ha_close.values.tolist(),
+                        "trend": "bullish" if safe_get_value(ha_close) > safe_get_value(ha_open) else "bearish"
+                    }
+                }
+            else:
+                heikin_ashi_results = {}
+            
+            # Squeeze Momentum
+            squeeze_mom, squeeze_on = squeeze_momentum(df['high'], df['low'], df['close'])
+            squeeze_results = {
+                "Squeeze_Momentum": {
+                    "momentum": safe_get_value(squeeze_mom),
+                    "squeeze_on": safe_get_value(squeeze_on),
+                    "momentum_data": squeeze_mom.values.tolist(),
+                    "squeeze_on_data": squeeze_on.values.tolist(),
+                    "momentum_increasing": safe_get_value(squeeze_mom) > safe_get_value(squeeze_mom.shift(1)) if not pd.isna(safe_get_value(squeeze_mom.shift(1))) else False
+                }
+            }
+            
+            # Ehlers Fisher Transform
+            fisher, fisher_signal = ehlers_fisher_transform(df['close'])
+            fisher_results = {
+                "Fisher_Transform": {
+                    "value": safe_get_value(fisher),
+                    "signal": safe_get_value(fisher_signal),
+                    "data": fisher.values.tolist(),
+                    "signal_data": fisher_signal.values.tolist(),
+                    "bullish": safe_get_value(fisher) > safe_get_value(fisher_signal) if not pd.isna(safe_get_value(fisher_signal)) else False,
+                    "overbought": safe_get_value(fisher) > 2.0,
+                    "oversold": safe_get_value(fisher) < -2.0
+                }
+            }
+            
+            # Chande Momentum Oscillator
+            cmo = chande_momentum_oscillator(df['close'])
+            cmo_results = {
+                "CMO": {
+                    "value": safe_get_value(cmo),
+                    "data": cmo.values.tolist(),
+                    "overbought": 50,
+                    "oversold": -50
+                }
+            }
+            
             # Combine all results
             return {
                 **keltner_results,
@@ -722,7 +929,13 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                 **vortex_results,
                 **mass_idx_results,
                 **hma_results,
-                **vwap_results
+                **vwap_results,
+                **ichimoku_results,
+                **supertrend_results,
+                **heikin_ashi_results,
+                **squeeze_results,
+                **fisher_results,
+                **cmo_results
             }
         except Exception as e:
             logger.error(f"Error calculating additional indicators: {str(e)}")
@@ -753,6 +966,7 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
             ("volatility_indicators", calculate_volatility),
             ("fibonacci_levels", calculate_fibonacci_levels),
             ("market_structure", calculate_market_structure),
+            ("multi_timeframe", calculate_multi_timeframe_analysis),
             ("additional_indicators", calculate_additional_indicators)
         ]:
             try:
