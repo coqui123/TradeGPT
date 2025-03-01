@@ -1234,25 +1234,52 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                         'impulse_waves': elliott_waves['impulse_waves'],
                         'corrective_waves': elliott_waves['corrective_waves']
                     }
+                    
+                    # Add additional context to help the LLM understand the Elliott Wave pattern
+                    # This makes it easier for the LLM to interpret the pattern even with incomplete data
+                    if elliott_waves['confidence'] > 0:
+                        advanced_patterns_result['elliott_wave']['pattern_quality'] = (
+                            "high" if elliott_waves['confidence'] > 0.7 else 
+                            "medium" if elliott_waves['confidence'] > 0.4 else 
+                            "low"
+                        )
+                        
+                        # Add a simplified interpretation
+                        wave_pos = elliott_waves['current_position']
+                        if "undefined" in wave_pos or "No clear" in wave_pos:
+                            advanced_patterns_result['elliott_wave']['interpretation'] = "Elliott Wave pattern is unclear or developing"
+                        elif "Impulse wave" in wave_pos:
+                            advanced_patterns_result['elliott_wave']['interpretation'] = f"In an impulse move ({wave_pos})"
+                        elif "Corrective" in wave_pos:
+                            advanced_patterns_result['elliott_wave']['interpretation'] = f"In a corrective move ({wave_pos})"
+                        else:
+                            advanced_patterns_result['elliott_wave']['interpretation'] = wave_pos
+                    else:
+                        advanced_patterns_result['elliott_wave']['interpretation'] = "No clear Elliott Wave pattern detected"
+                        
                 except Exception as e:
                     logger.error(f"Error calculating Elliott Wave: {str(e)}")
-                    advanced_patterns_result['elliott_wave'] = {"error": str(e)}
+                    advanced_patterns_result['elliott_wave'] = {
+                        "error": str(e),
+                        "interpretation": "Elliott Wave analysis failed due to insufficient or invalid data",
+                        "confidence": 0,
+                        "wave_count": 0
+                    }
             
             # Divergence Scanning between price and RSI
-            if len(df) >= 20:
-                try:
-                    rsi = relative_strength_index(df['close'])
-                    divergences = divergence_scanner(df['close'], rsi)
-                    advanced_patterns_result['divergences'] = {
-                        'regular_bullish': divergences['regular_bullish'],
-                        'regular_bearish': divergences['regular_bearish'],
-                        'hidden_bullish': divergences['hidden_bullish'],
-                        'hidden_bearish': divergences['hidden_bearish'],
-                        'strength': divergences['strength']
-                    }
-                except Exception as e:
-                    logger.error(f"Error calculating Divergences: {str(e)}")
-                    advanced_patterns_result['divergences'] = {"error": str(e)}
+            try:
+                # Get RSI values from results dictionary if available, otherwise pass None
+                rsi_values = results.get('RSI', {}).get('value') if 'RSI' in results and isinstance(results['RSI'], dict) else None
+                
+                # If RSI values are available as a series, use them; otherwise, provide a single value
+                if rsi_values is not None and not isinstance(rsi_values, (pd.Series, list)):
+                    rsi_values = [rsi_values]  # Convert single value to list
+                
+                divergences = calculate_divergences(df['close'], rsi_values)
+                advanced_patterns_result['divergences'] = divergences
+            except Exception as e:
+                logger.error(f"Error calculating divergences: {str(e)}")
+                advanced_patterns_result['divergences'] = {"error": str(e)}
             
             # Harmonic Pattern Detection
             if len(df) >= 30:
@@ -1264,7 +1291,7 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                     advanced_patterns_result['harmonic_patterns'] = {"error": str(e)}
             
             # Volume Profile Analysis
-            if len(df) >= 30:
+            if len(df) >= 30 and 'volume' in df.columns:
                 try:
                     vol_profile = volume_profile(df['high'], df['low'], df['close'], df['volume'])
                     advanced_patterns_result['volume_profile'] = {
@@ -1322,11 +1349,12 @@ def calculate_technical_indicators_parallel(df: pd.DataFrame) -> Dict[str, Any]:
                     logger.error(f"Error calculating Order Flow Analysis: {str(e)}")
                     advanced_patterns_result['order_flow'] = {"error": str(e)}
             
-            # Return the results to be merged with the main results
-            return advanced_patterns_result
+            # Update the main indicator results dictionary with the advanced patterns
+            results.update(advanced_patterns_result)
             
+            return advanced_patterns_result
         except Exception as e:
-            logger.error(f"Error calculating advanced patterns: {str(e)}")
+            logger.error(f"Error in calculate_advanced_patterns: {str(e)}")
             return {"error": str(e)}
 
     # Execute calculations in parallel
@@ -1647,6 +1675,59 @@ def format_indicators_for_llm(indicators: Dict[str, Any]) -> Dict[str, Any]:
                             "bias": "bullish" if "bullish" in pattern_data["type"].lower() else "bearish" if "bearish" in pattern_data["type"].lower() else "neutral"
                         })
     
+    # Process Elliott Wave patterns
+    if "elliott_wave" in indicators:
+        elliott_data = indicators["elliott_wave"]
+        if isinstance(elliott_data, dict):
+            # Create base pattern data
+            ew_pattern = {
+                "type": "elliott_wave",
+                "pattern": "Elliott Wave",
+                "confidence": elliott_data.get("confidence", 0),
+                "position": elliott_data.get("current_position", "undefined"),
+                "bias": "undefined"  # Default value
+            }
+            
+            # Add interpretation if available
+            if "interpretation" in elliott_data:
+                ew_pattern["interpretation"] = elliott_data["interpretation"]
+                ew_pattern["quality"] = elliott_data.get("pattern_quality", "low")
+                
+                # Try to determine trading bias from the current position
+                position = elliott_data.get("current_position", "").lower()
+                if position:
+                    if "impulse" in position and "5" in position:
+                        ew_pattern["bias"] = "reversal expected"
+                    elif "impulse" in position and any(str(i) in position for i in [1, 2, 3, 4]):
+                        ew_pattern["bias"] = "trend continuation likely"
+                    elif "corrective" in position and "complete" in position:
+                        ew_pattern["bias"] = "trend resumption likely"
+                
+                # Add wave structures if available
+                impulse_waves = elliott_data.get("impulse_waves", [])
+                if impulse_waves and isinstance(impulse_waves, list):
+                    valid_waves = [w for w in impulse_waves if w is not None and isinstance(w, dict)]
+                    if valid_waves:
+                        ew_pattern["impulse_structure"] = valid_waves
+                
+                corrective_waves = elliott_data.get("corrective_waves", [])
+                if corrective_waves and isinstance(corrective_waves, list):
+                    valid_waves = [w for w in corrective_waves if w is not None and isinstance(w, dict)]
+                    if valid_waves:
+                        ew_pattern["corrective_structure"] = valid_waves
+            else:
+                # Use confidence to create interpretation if not explicitly provided
+                confidence = elliott_data.get("confidence", 0)
+                if confidence > 0.7:
+                    ew_pattern["interpretation"] = "Clear Elliott Wave pattern"
+                elif confidence > 0.3:
+                    ew_pattern["interpretation"] = "Developing Elliott Wave pattern"
+                else:
+                    ew_pattern["interpretation"] = "Unclear Elliott Wave pattern"
+            
+            # Add the pattern to the list
+            patterns.append(ew_pattern)
+    
     # Check for candlestick patterns
     if "candlestick_patterns" in indicators:
         candle_patterns = indicators["candlestick_patterns"]
@@ -1867,16 +1948,61 @@ def optimize_indicators_for_llm(indicators: Dict[str, Any]) -> Dict[str, Any]:
         # Keep only the most recent values for indicator arrays
         for key, value in optimized.items():
             if isinstance(value, dict):
-                # For nested dictionaries, check for data arrays
-                for k, v in list(value.items()):
-                    # If a key contains 'data' and has a list longer than 10 items, truncate it
-                    if k == 'data' and isinstance(v, list) and len(v) > 10:
-                        value[k] = v[-10:]  # Keep only the most recent 10 values
-                    # For nested values that are dictionaries, check recursively
-                    elif isinstance(v, dict):
-                        for subk, subv in list(v.items()):
-                            if subk == 'data' and isinstance(subv, list) and len(subv) > 10:
-                                v[subk] = subv[-10:]
+                # Special handling for Elliott Wave data
+                if key == "elliott_wave":
+                    # Ensure we preserve important information while trimming excess
+                    if "impulse_waves" in value and isinstance(value["impulse_waves"], list) and len(value["impulse_waves"]) > 0:
+                        # Keep only the essential data from impulse waves
+                        simplified_waves = []
+                        for wave in value["impulse_waves"]:
+                            if wave and isinstance(wave, dict):
+                                simplified_wave = {
+                                    "wave": wave.get("wave"),
+                                    "price": wave.get("price")
+                                }
+                                simplified_waves.append(simplified_wave)
+                        value["impulse_waves"] = simplified_waves
+                    
+                    if "corrective_waves" in value and isinstance(value["corrective_waves"], list) and len(value["corrective_waves"]) > 0:
+                        # Keep only the essential data from corrective waves
+                        simplified_waves = []
+                        for wave in value["corrective_waves"]:
+                            if wave and isinstance(wave, dict):
+                                simplified_wave = {
+                                    "wave": wave.get("wave"),
+                                    "price": wave.get("price")
+                                }
+                                simplified_waves.append(simplified_wave)
+                        value["corrective_waves"] = simplified_waves
+                        
+                    # Add an interpretation field if it doesn't exist
+                    if "interpretation" not in value:
+                        confidence = value.get("confidence", 0)
+                        current_position = value.get("current_position", "undefined")
+                        if confidence > 0.7:
+                            value["interpretation"] = "Clear Elliott Wave pattern"
+                        elif confidence > 0.3:
+                            value["interpretation"] = "Developing Elliott Wave pattern"
+                        else:
+                            value["interpretation"] = "Unclear Elliott Wave pattern"
+                        
+                        # Add pattern quality
+                        value["pattern_quality"] = (
+                            "high" if confidence > 0.7 else 
+                            "medium" if confidence > 0.4 else 
+                            "low"
+                        )
+                else:
+                    # For other nested dictionaries, check for data arrays
+                    for k, v in list(value.items()):
+                        # If a key contains 'data' and has a list longer than 10 items, truncate it
+                        if k == 'data' and isinstance(v, list) and len(v) > 10:
+                            value[k] = v[-10:]  # Keep only the most recent 10 values
+                        # For nested values that are dictionaries, check recursively
+                        elif isinstance(v, dict):
+                            for subk, subv in list(v.items()):
+                                if subk == 'data' and isinstance(subv, list) and len(subv) > 10:
+                                    v[subk] = subv[-10:]
     
     return optimized
 
@@ -2048,3 +2174,56 @@ Volume Analysis:
 """
     
     return summary 
+
+def calculate_divergences(price, rsi_values):
+    """
+    Calculate price/indicator divergences
+    
+    Parameters:
+    -----------
+    price : pd.Series or list
+        Price data
+    rsi_values : pd.Series or list
+        RSI indicator values
+        
+    Returns:
+    --------
+    dict: Dictionary containing detected divergences
+    """
+    try:
+        import pandas as pd
+        import numpy as np
+        from app.technical_indicators.advanced_indicators import divergence_scanner
+        
+        # Convert to pandas Series if they aren't already
+        if not isinstance(price, pd.Series):
+            price = pd.Series(price)
+        
+        # If RSI values aren't provided, calculate them
+        if rsi_values is None:
+            from app.technical_indicators.basic_indicators import relative_strength_index
+            rsi_values = relative_strength_index(price)
+        elif not isinstance(rsi_values, pd.Series):
+            rsi_values = pd.Series(rsi_values)
+        
+        # Scan for divergences using the specialized function
+        divergences = divergence_scanner(price, rsi_values)
+        
+        # Return formatted divergences
+        return {
+            'regular_bullish': divergences.get('regular_bullish', []),
+            'regular_bearish': divergences.get('regular_bearish', []),
+            'hidden_bullish': divergences.get('hidden_bullish', []),
+            'hidden_bearish': divergences.get('hidden_bearish', []),
+            'strength': divergences.get('strength', 0)
+        }
+    except Exception as e:
+        logger.error(f"Error in calculate_divergences: {str(e)}")
+        return {
+            'regular_bullish': [],
+            'regular_bearish': [],
+            'hidden_bullish': [],
+            'hidden_bearish': [],
+            'strength': 0,
+            'error': str(e)
+        }
