@@ -11,7 +11,7 @@ from azure.ai.inference.models import SystemMessage, UserMessage
 
 from app.services.llm_manager import LLMManager
 from app.utils.json_utils import format_json_result
-from app.core.analysis_engine import summarize_pair_data
+from app.core.analysis_engine import summarize_pair_data, format_indicators_for_llm, add_smart_money_context, optimize_indicators_for_llm
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -33,6 +33,22 @@ def generate_trade_recommendation_parallel(combined_data: Dict[str, Any], user_b
     except Exception as e:
         logger.error(f"Error summarizing market data: {str(e)}")
         summarized_data = f"Error summarizing market data for {pair_info}."
+    
+    # Sanitize and optimize indicators for LLM consumption
+    try:
+        # First optimize to remove null values and reduce token usage
+        optimized_indicators = optimize_indicators_for_llm(technical_indicators)
+        
+        # Then format in a structured, LLM-friendly format
+        formatted_indicators = format_indicators_for_llm(optimized_indicators)
+        
+        # Finally, add contextual information to help the LLM interpret the data
+        enriched_indicators = add_smart_money_context(formatted_indicators)
+        
+        # Use the enriched indicators instead of raw technical indicators
+        technical_indicators = enriched_indicators
+    except Exception as e:
+        logger.error(f"Error formatting indicators for LLM: {str(e)}")
     
     # Create the final message for comprehensive analysis
     system_prompt = f"""

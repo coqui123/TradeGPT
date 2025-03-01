@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import numpy as np
 import pandas as pd
+import math
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -166,49 +167,62 @@ async def analyze_trade(request: AnalysisRequest):
         # Log the keys of the indicators dictionary for debugging
         logger.info(f"Available indicator keys: {list(indicators.keys())}")
         
-        # Convert numpy types to native Python types in indicators
+        # Helper function to recursively sanitize and filter out None values
+        def sanitize_value(value):
+            # For None values, return None to be filtered out later
+            if value is None:
+                return None
+            # Convert numpy scalar types to Python native types
+            elif isinstance(value, np.integer):
+                return int(value)
+            elif isinstance(value, np.floating):
+                # Check for NaN and return None instead
+                if np.isnan(value):
+                    return None
+                return float(value)
+            elif isinstance(value, np.ndarray):
+                # Convert numpy array to list and filter out None/NaN values
+                result = value.tolist()
+                # Filter out None and NaN values
+                filtered_result = []
+                for item in result:
+                    if item is None:
+                        continue
+                    if isinstance(item, float) and (np.isnan(item) or np.isinf(item)):
+                        continue
+                    filtered_result.append(item)
+                return filtered_result if filtered_result else None
+            # Handle dictionary values recursively
+            elif isinstance(value, dict):
+                result = {}
+                for k, v in value.items():
+                    sanitized_v = sanitize_value(v)
+                    # Only include non-None values in the result
+                    if sanitized_v is not None:
+                        result[k] = sanitized_v
+                return result if result else None  # Return None for empty dictionaries
+            # Handle list values recursively
+            elif isinstance(value, (list, tuple)):
+                result = [sanitize_value(item) for item in value]
+                # Filter out None values from the list
+                result = [item for item in result if item is not None]
+                return result if result else None  # Return None for empty lists
+            # For complex objects, convert to string
+            elif not isinstance(value, (int, float, bool, str, list, dict, type(None))):
+                return str(value)
+            # Handle float NaN/Inf in native Python
+            elif isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                return None
+            # Return other primitive values as they are
+            else:
+                return value
+        
+        # Apply sanitization to all indicators
         sanitized_indicators = {}
         for key, value in indicators.items():
-            if isinstance(value, np.integer):
-                sanitized_indicators[key] = int(value)
-            elif isinstance(value, np.floating):
-                sanitized_indicators[key] = float(value)
-            elif isinstance(value, np.ndarray):
-                sanitized_indicators[key] = value.tolist()
-            elif isinstance(value, dict):
-                # Preserve the complete structure of nested dictionaries
-                processed_dict = {}
-                for k, v in value.items():
-                    if isinstance(v, np.integer):
-                        processed_dict[k] = int(v)
-                    elif isinstance(v, np.floating):
-                        processed_dict[k] = float(v)
-                    elif isinstance(v, np.ndarray):
-                        processed_dict[k] = v.tolist()
-                    elif isinstance(v, (list, tuple)):
-                        processed_dict[k] = [
-                            int(item) if isinstance(item, np.integer) else
-                            float(item) if isinstance(item, np.floating) else
-                            item.tolist() if isinstance(item, np.ndarray) else
-                            str(item) if not isinstance(item, (int, float, bool, str, list, dict, type(None))) else
-                            item
-                            for item in v
-                        ]
-                    else:
-                        processed_dict[k] = str(v) if not isinstance(v, (int, float, bool, str, list, dict, type(None))) else v
-                sanitized_indicators[key] = processed_dict
-            elif isinstance(value, (list, tuple)):
-                # Convert all items in lists to primitive types
-                sanitized_indicators[key] = [
-                    int(item) if isinstance(item, np.integer) else
-                    float(item) if isinstance(item, np.floating) else
-                    item.tolist() if isinstance(item, np.ndarray) else
-                    str(item) if not isinstance(item, (int, float, bool, str, list, dict, type(None))) else item
-                    for item in value
-                ]
-            else:
-                # Convert any other complex types to strings
-                sanitized_indicators[key] = str(value) if not isinstance(value, (int, float, bool, str, list, dict, type(None))) else value
+            sanitized_value = sanitize_value(value)
+            if sanitized_value is not None:  # Only include non-None values
+                sanitized_indicators[key] = sanitized_value
         
         # Get market summary
         market_summary = summarize_pair_data(pair_data)
@@ -461,14 +475,12 @@ async def analyze_trade(request: AnalysisRequest):
         if isinstance(final_result.get('stop_loss'), dict) and (final_result['stop_loss'].get('trailing') is None or final_result['stop_loss'].get('trailing') == "None"):
             final_result['stop_loss']['trailing'] = 0.0
             
-        # Final check to ensure all technical indicators are primitive types
+        # Final check to ensure all technical indicators are primitive types and null values are filtered
         if 'analysis_details' in final_result and 'technical_indicators' in final_result['analysis_details']:
-            # Preserve the complete technical indicators data without excessive transformation
-            # Just ensure there are no numpy types remaining
+            # Get the technical indicators from the analysis details
             raw_indicators = final_result['analysis_details']['technical_indicators']
             
             # Ensure we have all the key indicators explicitly present in the output
-            # This helps ensure indicators like ADX are included
             if isinstance(raw_indicators, dict):
                 # Check for ADX specifically since it's missing
                 if 'ADX' not in raw_indicators and 'Market_Structure' in raw_indicators and 'adx' in raw_indicators['Market_Structure']:
@@ -481,15 +493,20 @@ async def analyze_trade(request: AnalysisRequest):
                     if indicator not in raw_indicators and 'Market_Structure' in raw_indicators:
                         if indicator.lower() in raw_indicators['Market_Structure']:
                             raw_indicators[indicator] = raw_indicators['Market_Structure'][indicator.lower()]
+                
+                # Apply our sanitization function again to ensure we filter out any null values
+                # that might have been added after initial sanitization
+                sanitized_indicators = {}
+                for key, value in raw_indicators.items():
+                    sanitized_value = sanitize_value(value)
+                    if sanitized_value is not None:  # Only include non-None values
+                        sanitized_indicators[key] = sanitized_value
+                
+                # Replace with the re-sanitized version
+                final_result['analysis_details']['technical_indicators'] = sanitized_indicators
             
-            # The sanitization process earlier should have already converted all numpy types
-            # to native Python types, so we'll just keep the data as is
-            
-            # No additional processing or formatting is needed since we want to display
-            # the complete JSON response as requested
-            
-            # Log the keys to help with debugging
-            logger.info(f"Technical indicators included in response: {list(raw_indicators.keys())}")
+            # Log the keys for debugging
+            logger.info(f"Technical indicators included in response: {list(final_result['analysis_details']['technical_indicators'].keys())}")
         
         logger.info(f"Generated analysis with trade size: {final_result['trade_size']} for amount: {request.amount}")
         return final_result
