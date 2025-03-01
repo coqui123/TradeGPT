@@ -1,6 +1,6 @@
 # TradeGPT 🚀 
 
-TradeGPT is a full-stack cryptocurrency trading application that combines a modern Fresh (Deno) frontend with a Python (FASTAPI) backend for Coinbase integration and Azure AI Services for intelligent trading analysis. 💹
+TradeGPT is a full-stack cryptocurrency trading application that combines a modern Fresh (Deno) frontend with a Python (FASTAPI) backend for Coinbase API integration and Azure AI Services for intelligent trading analysis. 💹
 
 ## Project Structure 📁
 
